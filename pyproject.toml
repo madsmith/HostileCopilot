@@ -1,0 +1,50 @@
+[project]
+name = "HostileCoPilot"
+version = "0.1.0"
+description = "Star Citizen Companion"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {file = "LICENSE"}
+authors = [
+    {name = "Martin", email = "martin@example.com"},
+]
+keywords = ["star-citizen", "companion", "gaming", "copilot"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Games/Entertainment",
+]
+dependencies = [
+    "pydantic-ai>=0.7.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.4.1",
+]
+
+[project.scripts]
+hostile-copilot = "hostile_copilot.client.main:main"
+
+[project.urls]
+Homepage = "https://github.com/madsmith/HostileCoPilot"
+Repository = "https://github.com/madsmith/HostileCoPilot"
+Issues = "https://github.com/madsmith/HostileCoPilot/issues"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
