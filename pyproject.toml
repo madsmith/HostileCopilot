@@ -23,12 +23,15 @@ dependencies = [
     "pip>=25.2",
     "pyaudio>=0.2.14",
     "pydantic-ai>=0.7.4",
+    "scipy>=1.16.1",
     "torch>=2.8.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.4.1",
+    "scipy-stubs>=1.16.1.1",
+    "types-pyaudio>=0.2.14",
 ]
 
 [project.scripts]
