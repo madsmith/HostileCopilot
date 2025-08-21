@@ -50,7 +50,6 @@ class TTSEngine:
         return self._device
     
     async def initialize(self):
-        logger.info("Initializing TTS engine...")
         # Initialize torch device
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -110,7 +109,7 @@ class TTSEngine:
                 result_audio.append(audio)
 
             logger.debug(f"Generated {len(result_audio)} audio chunks.")
-            
+
             audio = torch.cat(result_audio, dim=0)
 
             # copy back
