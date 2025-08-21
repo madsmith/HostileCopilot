@@ -1,5 +1,6 @@
 import pyaudio
 import numpy as np
+import numpy.typing as npt
 
 class AudioData:
     def __init__(
@@ -28,7 +29,7 @@ class AudioData:
         """ Return raw audio bytes """
         return self.frames
     
-    def as_array(self, dtype: np.dtype | None = None) -> np.ndarray:
+    def as_array(self, dtype: npt.DTypeLike | None = None) -> np.ndarray:
         """ Convert bytes to numpy array """
         sample_dtype, _ = self.get_type_info()
 

@@ -3,8 +3,11 @@ from huggingface_hub.errors import RepositoryNotFoundError, HfHubHTTPError
 from kokoro import KModel, KPipeline # type: ignore
 import logging
 import numpy as np
+import pyaudio
 import torch
 from typing import Any
+
+from hostile_copilot.audio import AudioData, tensor_to_int16
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +89,7 @@ class TTSEngine:
 
         logger.info("TTS engine initialized.")
 
-    async def infer(self, text: str, inference_params: dict[str, Any] | None = None) -> bytes:
+    async def infer(self, text: str, inference_params: dict[str, Any] | None = None) -> AudioData:
         async with self._lock:
             processed_inputs: str = self._preprocess_input(text)
 
@@ -97,24 +100,25 @@ class TTSEngine:
                 assert len(self._voices) > 0, "No voices specified."
                 inference_params["voice"] = self._voices[0]
             inference_params["text"] = processed_inputs
+            inference_params["split_pattern"] = r"[,.]|\n"
 
             generator = self.pipeline(**inference_params)
 
             result_audio = []
             for i, (grapheme_stream, phoneme_stream, audio) in enumerate(generator):
-                # print(f"Generated spech {i}: {gs} -> {ps}")
+                #print(f"Generated spech {i}: {grapheme_stream} -> {phoneme_stream}")
                 result_audio.append(audio)
 
             logger.debug(f"Generated {len(result_audio)} audio chunks.")
+            
             audio = torch.cat(result_audio, dim=0)
 
             # copy back
-            audio = audio.cpu()
+            audio_tensor = audio.cpu()
 
-            audio_np: np.ndarray = audio.numpy()
-            audio_bytes: bytes = audio_np.tobytes()
+            audio_np = tensor_to_int16(audio_tensor)
             
-            return audio_bytes
+            return AudioData(audio_np.tobytes(), format=pyaudio.paInt16, channels=1, rate=24000)
     
     def _preprocess_input(self, text: str) -> str:
         """
