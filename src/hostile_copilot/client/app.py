@@ -1,6 +1,6 @@
 import asyncio
 
-from hostile_copilot.core.config import OmegaConfig
+from hostile_copilot.config import OmegaConfig
 from hostile_copilot.tts.engine import TTSEngine
 
 class HostileCoPilotApp:
@@ -19,7 +19,7 @@ class HostileCoPilotApp:
 
     async def run(self):
         audio = await self._tts_engine.infer("Hello, how are you?")
-        print(audio)
+        print(f"Generated {len(audio)} bytes of audio.")
         while self._is_running:
             try:
                 await asyncio.sleep(1)

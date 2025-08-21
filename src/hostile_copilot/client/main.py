@@ -10,7 +10,7 @@ import argparse
 import logging
 
 from hostile_copilot.client.app import HostileCoPilotApp
-from hostile_copilot.core.config import load_config
+from hostile_copilot.config import load_config
 
 async def run_app(args: argparse.Namespace) -> None:
     """Run the HostileCoPilot client"""

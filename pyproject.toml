@@ -21,6 +21,7 @@ dependencies = [
     "kokoro>=0.9.4",
     "omegaconf>=2.3.0",
     "pip>=25.2",
+    "pyaudio>=0.2.14",
     "pydantic-ai>=0.7.4",
     "torch>=2.8.0",
 ]
