@@ -101,8 +101,8 @@ class TTSEngine:
             generator = self.pipeline(**inference_params)
 
             result_audio = []
-            for i, (gs, ps, audio) in enumerate(generator):
-                print(f"Generated spech {i}: {gs} -> {ps}")
+            for i, (grapheme_stream, phoneme_stream, audio) in enumerate(generator):
+                # print(f"Generated spech {i}: {gs} -> {ps}")
                 result_audio.append(audio)
 
             logger.debug(f"Generated {len(result_audio)} audio chunks.")
