@@ -18,6 +18,7 @@ classifiers = [
     "Topic :: Games/Entertainment",
 ]
 dependencies = [
+    "omegaconf>=2.3.0",
     "pydantic-ai>=0.7.4",
 ]
 

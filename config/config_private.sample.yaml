@@ -1,0 +1,6 @@
+private:
+  openai:
+    api_key: "your-openai-api-key"
+    api_base: "https://api.openai.com/v1"
+  uexcorp:
+    bearer_token: "your-uexcorp-bearer-token"

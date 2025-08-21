@@ -26,46 +26,76 @@ HostileCoPilot is a powerful companion application designed to enhance your Star
 
 ### Install from Source
 
-```bash
-# Clone the repository
+```bat
+:: Clone the repository
 git clone https://github.com/martin/HostileCoPilot.git
 cd HostileCoPilot
 
-# Install in development mode
+:: Create and activate a virtual environment (cmd.exe)
+py -3.12 -m venv .venv
+.venv\Scripts\activate.bat
+
+:: Install in development mode
 pip install -e .
 
-# Or install with development dependencies
-pip install -e .[dev]
+:: Or install with development dependencies
+pip install -e ".[dev]"
 ```
 
 ## Usage
 
 ### Command Line Interface
 
-```bash
-# Start the application
+```bat
+:: Start the application (after activating your venv)
 hostile-copilot
 ```
 
 ### Configuration
 
-TBD
+Credentials are required for OpenAI and UEX Corp APIs.
+
+1. Copy the sample private config file:
+
+```bat
+copy config\config_private.sample.yaml config\config_private.yaml
+```
+
+2. Edit `config/config_private.yaml` and set your credentials:
+
+```yaml
+private:
+  openai:
+    api_key: "your-openai-api-key"
+  uexcorp:
+    bearer_token: "your-uexcorp-bearer-token"
+```
+
+3. The public config at `config/config.yaml` references these values via `${private...}` interpolation, so you generally don't need to edit it, but any similar keys defined in `config/config_private.yaml` will override the public config.
+
+```yaml
+openai:
+  api_key: "${private.openai.api_key}"
+  api_base: "https://api.openai.com/v1"
+uexcorp:
+  bearer_token: "${private.uexcorp.bearer_token}"
+```
 
 ## Development
 
 ### Setting up Development Environment
 
-```bash
-# Clone the repository
+```bat
+:: Clone the repository
 git clone https://github.com/martin/HostileCoPilot.git
 cd HostileCoPilot
 
-# Create virtual environment
-python -m venv .venv
-.venv\Scripts\activate
+:: Create virtual environment
+py -3.12 -m venv .venv
+.venv\Scripts\activate.bat
 
-# Install development dependencies
-pip install -e .[dev]
+:: Install development dependencies
+pip install -e ".[dev]"
 ```
 
 ### Running Tests
