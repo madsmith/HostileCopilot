@@ -1,9 +1,10 @@
 import asyncio
+from huggingface_hub.errors import RepositoryNotFoundError, HfHubHTTPError
+from kokoro import KModel, KPipeline # type: ignore
 import logging
 import numpy as np
 import torch
-from kokoro import KModel, KPipeline # type: ignore
-from huggingface_hub.errors import RepositoryNotFoundError, HfHubHTTPError
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -85,12 +86,19 @@ class TTSEngine:
 
         logger.info("TTS engine initialized.")
 
-    async def infer(self, text: str) -> bytes:
+    async def infer(self, text: str, inference_params: dict[str, Any] | None = None) -> bytes:
         async with self._lock:
             processed_inputs: str = self._preprocess_input(text)
 
             logger.debug(f"Generating speech for '{processed_inputs}'...")
-            generator = self.pipeline(processed_inputs)
+            inference_params = inference_params or {}
+
+            if "voices" not in inference_params:
+                assert len(self._voices) > 0, "No voices specified."
+                inference_params["voice"] = self._voices[0]
+            inference_params["text"] = processed_inputs
+
+            generator = self.pipeline(**inference_params)
 
             result_audio = []
             for i, (gs, ps, audio) in enumerate(generator):
