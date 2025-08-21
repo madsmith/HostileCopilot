@@ -4,3 +4,11 @@ openai:
 
 uexcorp:
   bearer_token: "${private.uexcorp.bearer_token}"
+
+# Text-to-Speech settings
+tts:
+  # Default public Kokoro model repo id. Override here if you want another model
+  model_id: "hexgrad/Kokoro-82M"
+  # Optionally preload voices. Examples: ["af_sky", "af_sky,af_heart"]
+  # Note: kororo supports merging voice weights into an aggregate weight with commas
+  voices: ["af_sky,af_heart"]

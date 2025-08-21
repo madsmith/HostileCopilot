@@ -9,20 +9,18 @@ import asyncio
 import argparse
 import logging
 
+from hostile_copilot.client.app import HostileCoPilotApp
+from hostile_copilot.core.config import load_config
 
-
-async def run_client() -> None:
+async def run_app(args: argparse.Namespace) -> None:
     """Run the HostileCoPilot client"""
     logging.info("Starting HostileCoPilot client...")
 
-    is_running = True
-    while is_running:
-        try:
-            logging.debug("idle...")
-            await asyncio.sleep(1)
-        except KeyboardInterrupt:
-            is_running = False
-
+    config = load_config()
+    
+    app = HostileCoPilotApp(config)
+    await app.initialize()
+    await app.run()
 
 def main() -> None:
     """Main entry point for the application"""
@@ -40,9 +38,16 @@ def main() -> None:
     )
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
+    else:
+        suppress_warnings()
     
-    asyncio.run(run_client())
+    asyncio.run(run_app(args))
 
+def suppress_warnings():
+    import warnings
+    warnings.filterwarnings("ignore", category=UserWarning)
+    warnings.filterwarnings("ignore", category=FutureWarning)
 
 if __name__ == "__main__":
+    suppress_warnings()
     main()

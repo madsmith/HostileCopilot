@@ -18,8 +18,10 @@ classifiers = [
     "Topic :: Games/Entertainment",
 ]
 dependencies = [
+    "kokoro>=0.9.4",
     "omegaconf>=2.3.0",
     "pydantic-ai>=0.7.4",
+    "torch>=2.8.0",
 ]
 
 [project.optional-dependencies]
