@@ -20,7 +20,10 @@ async def run_app(args: argparse.Namespace) -> None:
     
     app = HostileCoPilotApp(config)
     await app.initialize()
-    await app.run()
+    try:
+        await app.run()
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        pass
 
 def main() -> None:
     """Main entry point for the application"""

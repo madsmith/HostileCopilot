@@ -33,3 +33,4 @@ config/config_private.yaml
 
 # Development files
 notes.md
+resources/stereo_test_resampled.wav
