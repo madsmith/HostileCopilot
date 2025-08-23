@@ -89,6 +89,8 @@ class HostileCoPilotApp:
 
         calibration_toolset = FunctionToolset(tools=[
             self._tool_setup_mining_calibration,
+            self._tool_setup_ping_scan_calibration,
+            self._tool_setup_nav_search_calibration,
         ])
 
         agent = Agent(
@@ -184,5 +186,40 @@ class HostileCoPilotApp:
         self._app_config.set("calibration.mining_scan.start_y", start.y)
         self._app_config.set("calibration.mining_scan.end_x", end.x)
         self._app_config.set("calibration.mining_scan.end_y", end.y)
+
+        omegaconf.OmegaConf.save(self._app_config._config, self._app_config_path)
+
+    async def _tool_setup_ping_scan_calibration(self):
+        task = GetScreenBoundingBoxTask(self._config)
+        await task.run()
+        
+        start, end = task.bounding_box
+
+        # Ensure path exists... TODO: make config support defaulting path parents
+        if "calibration" not in self._app_config:
+            self._app_config.set("calibration", {})
+        if "calibration.ping_scan" not in self._app_config:
+            self._app_config.set("calibration.ping_scan", {})
+        
+        self._app_config.set("calibration.ping_scan.start_x", start.x)
+        self._app_config.set("calibration.ping_scan.start_y", start.y)
+        self._app_config.set("calibration.ping_scan.end_x", end.x)
+        self._app_config.set("calibration.ping_scan.end_y", end.y)
+
+        omegaconf.OmegaConf.save(self._app_config._config, self._app_config_path)
+
+    async def _tool_setup_nav_search_calibration(self):
+        task = GetScreenLocationTask(self._config)
+        await task.run()
+        
+        location = task.last_click
+
+        # Ensure path exists... TODO: make config support defaulting path parents
+        if "calibration" not in self._app_config:
+            self._app_config.set("calibration", {})
+        if "calibration.nav_search" not in self._app_config:
+            self._app_config.set("calibration.nav_search", {})
+        
+        self._app_config.set("calibration.nav_search.location", location)
 
         omegaconf.OmegaConf.save(self._app_config._config, self._app_config_path)
