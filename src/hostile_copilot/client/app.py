@@ -36,6 +36,9 @@ class HostileCoPilotApp:
         logger.info("Initializing VoiceClient...")
         await self._voice_client.initialize()
 
+        self._voice_client.on_prompt(self._on_prompt)
+        self._voice_client.on_immediate_activation(self._on_immediate_activation)
+
         self._audio_device.start()
 
     async def run(self):
@@ -80,3 +83,9 @@ class HostileCoPilotApp:
 
 
         await self._voice_task
+
+    def _on_prompt(self, prompt: str):
+        print(f"Prompt: {prompt}")
+
+    def _on_immediate_activation(self, wake_word: str):
+        print(f"Immediate activation: {wake_word}")

@@ -5,6 +5,7 @@ import openwakeword
 from openwakeword import Model as OpenWakeWordModel
 import silero_vad
 from silero_vad.model import OnnxWrapper
+from typing import Callable, Awaitable, Union
 
 from hostile_copilot.audio import AudioDevice, AudioBuffer, AudioData, numpy_to_tensor, load_wave_file, load_mp3_file
 from hostile_copilot.config import OmegaConfig
@@ -15,6 +16,8 @@ from hostile_copilot.utils.logging import get_trace_logger
 from .recording_state import RecordingState, RecState, RecEvent
 
 logger = get_trace_logger(__name__)
+
+CallbackT = Callable[[str], Union[None, Awaitable[None]]]
 
 class VoiceClient:
     def __init__(self, config: OmegaConfig, audio_device: AudioDevice):
@@ -34,6 +37,9 @@ class VoiceClient:
 
         self._vad_model: OnnxWrapper | None = None
         # self._whisper_engine: AudioInferenceEngine | None = None
+
+        self._prompt_callback: CallbackT | None = None
+        self._immediate_activation_callback: CallbackT | None = None
 
         # parameters for audio processing
         self._vad_chunk_frame_count = 512
@@ -289,20 +295,46 @@ class VoiceClient:
         
             self._submit_bg(self._process_recording_async, audio_data)
     
+    def on_prompt(self, callback: CallbackT):
+        self._prompt_callback = callback
+            
+    def on_immediate_activation(self, callback: CallbackT):
+        self._immediate_activation_callback = callback
+    
     def _process_recording_async(self, audio_data: AudioData) -> None:
         assert isinstance(audio_data, AudioData), f"Expected AudioData, got {type(audio_data)}"
         print("He we heard some audio!!")
 
         import time
         start = time.time()
-        text = self._stt_engine.infer(audio_data)
+        try:
+            text = self._stt_engine.infer(audio_data)
+        except Exception as e:
+            logger.exception(f"STT inference failed: {e}")
+            return
         end = time.time()
         print("Text: " + text)
         print("Time: " + str(end - start))
 
+        if self._prompt_callback:
+            try:
+                if asyncio.iscoroutinefunction(self._prompt_callback):
+                    asyncio.create_task(self._prompt_callback(text))
+                else:
+                    self._prompt_callback(text)
+            except Exception as e:
+                logger.exception(f"Prompt callback failed: {e}")
+
     def _process_immediate_wake_activation(self, wake_word: str) -> None:
         assert isinstance(wake_word, str), f"Expected str, got {type(wake_word)}"
-        print("Immediate wake activation: " + wake_word)
+        if self._immediate_activation_callback:
+            try:
+                if asyncio.iscoroutinefunction(self._immediate_activation_callback):
+                    asyncio.create_task(self._immediate_activation_callback(wake_word))
+                else:
+                    self._immediate_activation_callback(wake_word)
+            except Exception as e:
+                logger.exception(f"Immediate activation callback failed: {e}")
         
     def _on_wake_words_detected(self, words: list[str]) -> None:
         """Schedule confirmation for detected wake words without blocking audio loop."""

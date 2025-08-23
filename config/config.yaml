@@ -15,6 +15,7 @@ tts:
 
 stt:
   model_id: "gpt-4o-mini-transcribe"
+  prompt: "You are Mining Logger, please transcribe the question asked by the user to you."
 
 openwakeword:
   inference_framework: "onnx"

@@ -1,3 +1,4 @@
+import logging  
 import openai
 from typing import Any
 import os
@@ -6,6 +7,8 @@ from tempfile import NamedTemporaryFile
 from hostile_copilot.config import OmegaConfig
 from hostile_copilot.audio import AudioData
 from hostile_copilot.audio import save_mp3_file
+
+logger = logging.getLogger(__name__)
 
 class STTEngine:
     def __init__(self, config: OmegaConfig):
@@ -21,6 +24,7 @@ class STTEngine:
     def infer(self, audio: AudioData, **inference_params: dict[str, Any]) -> str:
         """Synchronously transcribe audio using OpenAI. Writes a temporary MP3 and cleans it up after use."""
         model_id = self._config.get("stt.model_id", "whisper-1")
+        prompt = self._config.get("stt.prompt", "")
 
         tmp: NamedTemporaryFile | None = None
         try:
@@ -36,11 +40,14 @@ class STTEngine:
                 transcription = self._client.audio.transcriptions.create(
                     model=model_id,
                     file=f,
+                    prompt=prompt
                 )
-            print(f"Transcribed in {end - start} seconds")
             
             # openai v1 returns an object with .text
             return getattr(transcription, "text", "")
+        except Exception as e:
+            logger.exception(f"STT inference failed: {e}")
+            raise
         finally:
             if tmp is not None:
                 try:
