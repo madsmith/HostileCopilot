@@ -4,6 +4,7 @@ import logging
 import numpy as np
 import time
 import pyautogui
+import sys
 from PIL.Image import Image
 
 from hostile_copilot.config import OmegaConfig
@@ -30,6 +31,8 @@ class GetScreenBoundingBoxTask(Task):
         self._alpha_mask: float = 0.40
         self._final_alpha_mask: float = 0.60
         self._final_delay: int = 1500
+        # Overlay tint color (BGR). Slight red hint to differentiate.
+        self._tint_color = (0, 0, 80)
         
     @property
     def start(self) -> Coordinate | None:
@@ -66,6 +69,17 @@ class GetScreenBoundingBoxTask(Task):
             cv2.namedWindow("Screenshot", cv2.WINDOW_NORMAL)
             cv2.setWindowProperty("Screenshot", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
             cv2.imshow("Screenshot", screenshot)
+
+            # Try to ensure window is on top / foreground
+            try:
+                # OpenCV 4.5+: set topmost if available
+                cv2.setWindowProperty("Screenshot", cv2.WND_PROP_TOPMOST, 1)
+            except Exception:
+                pass
+            # Process initial events so window exists
+            cv2.waitKey(1)
+            # Windows-specific foreground enforcement
+            self._bring_window_to_front("Screenshot")
 
             # Set mouse callback
             cv2.setMouseCallback("Screenshot", self.mouse_callback)
@@ -142,9 +156,10 @@ class GetScreenBoundingBoxTask(Task):
             x1, y1 = norm_start.x, norm_start.y
             x2, y2 = norm_end.x, norm_end.y
 
-            # Create an overlay that's black everywhere, but with the ROI copied from the original
+            # Create an overlay that's black everywhere, but with the region of interest
+            # (ROI) copied from the original
             overlay = screenshot.copy()
-            overlay[:] = (0, 0, 0)
+            overlay[:] = self._tint_color
             overlay[y1:y2, x1:x2] = screenshot[y1:y2, x1:x2]
 
             # Blend: outside ROI becomes darker (15%), ROI stays original
@@ -153,6 +168,11 @@ class GetScreenBoundingBoxTask(Task):
 
             # Draw rectangle outline
             cv2.rectangle(screenshot, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        else:
+            # No ROI yet: dim the entire screen with a slight red tint to differentiate from the raw screenshot
+            alpha_mask = self._alpha_mask if not final else self._final_alpha_mask
+            overlay = np.full_like(screenshot, self._tint_color)
+            cv2.addWeighted(overlay, alpha_mask, screenshot, 1 - alpha_mask, 0, screenshot)
 
         cv2.imshow("Screenshot", screenshot)
         
@@ -161,6 +181,55 @@ class GetScreenBoundingBoxTask(Task):
         x1, y1 = min(a.x, b.x), min(a.y, b.y)
         x2, y2 = max(a.x, b.x), max(a.y, b.y)
         return Coordinate(x1, y1), Coordinate(x2, y2)
+
+    def _bring_window_to_front(self, window_name: str) -> None:
+        """Best-effort: bring an OpenCV window to the foreground on Windows.
+
+        - Sets the window as topmost briefly, then restores non-topmost to avoid lingering.
+        - Uses Win32 APIs via ctypes. Does nothing on non-Windows platforms.
+        """
+        if sys.platform != "win32":
+            return
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            user32 = ctypes.WinDLL("user32", use_last_error=True)
+
+            FindWindowW = user32.FindWindowW
+            FindWindowW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR]
+            FindWindowW.restype = wintypes.HWND
+
+            SetForegroundWindow = user32.SetForegroundWindow
+            SetForegroundWindow.argtypes = [wintypes.HWND]
+            SetForegroundWindow.restype = wintypes.BOOL
+
+            ShowWindow = user32.ShowWindow
+            ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+            ShowWindow.restype = wintypes.BOOL
+
+            SetWindowPos = user32.SetWindowPos
+            SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_uint]
+            SetWindowPos.restype = wintypes.BOOL
+
+            HWND_TOPMOST = ctypes.c_void_p(-1)
+            HWND_NOTOPMOST = ctypes.c_void_p(-2)
+            SW_SHOW = 5
+            SWP_NOSIZE = 0x0001
+            SWP_NOMOVE = 0x0002
+            SWP_SHOWWINDOW = 0x0040
+
+            hwnd = FindWindowW(None, window_name)
+            if hwnd:
+                # Make visible and topmost briefly
+                ShowWindow(hwnd, SW_SHOW)
+                SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
+                SetForegroundWindow(hwnd)
+                # Optionally remove topmost flag to avoid sticking above everything
+                SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE)
+        except Exception:
+            # Best-effort only; ignore failures
+            pass
 
     def _convert_to_cv2(self, image: Image) -> np.ndarray:
         image_data = np.array(image)
