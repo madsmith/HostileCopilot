@@ -20,7 +20,7 @@ class Coordinate:
 class GetScreenBoundingBoxTask(Task):
     def __init__(self, config: OmegaConfig):
         super().__init__(config)
-        self._loop = asyncio.get_event_loop()
+        
         self._start: Coordinate | None = None
         self._end: Coordinate | None = None
         self._is_cropping: bool = False
