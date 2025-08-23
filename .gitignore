@@ -35,3 +35,4 @@ config/config_private.yaml
 notes.md
 resources/stereo_test_resampled.wav
 mypy.ini
+config/settings.yaml
