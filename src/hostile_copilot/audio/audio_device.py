@@ -391,8 +391,7 @@ class AudioDevice:
             # Validate format and (ideally) rate
             assert audio_data.format == self.format, "AudioData format must match device format"
             if audio_data.rate != self.rate:
-                # For now, require caller to resample ahead of time
-                raise ValueError(f"AudioData rate {audio_data.rate} must match device rate {self.rate}")
+                audio_data = audio_data.resample(self.rate)
 
             in_channels = audio_data.channels
             in_sample_size = pyaudio.get_sample_size(audio_data.format)
