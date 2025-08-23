@@ -165,6 +165,62 @@ class VoiceClient:
             self._bg_executor = None
         self._bg_futures.clear()
 
+    def start_recording(self, confirmed=False):
+        """
+        Begin recording audio for processing.
+        
+        Args:
+            confirmed (bool): The audio is a confirmed activation and doesn't need confirmation that the speaker
+            is engaging with the voice client.
+        """
+        logger.debug("Recording started")
+        self._recording_state.start()
+        if confirmed:
+            self._recording_state.confirm()
+
+    def stop_recording(self, cancel=False):
+        """
+        Stop recording audio.
+        
+        Args:
+            cancel (bool): Whether the recording was cancelled and the audio should not be processed.
+        """
+        if cancel:
+            logger.debug("Recording cancelled")
+            self._recording_state.stop()
+        elif not self._recording_state.is_processing_speech():
+            logger.debug("Recording not yet confirmed")
+            return
+        else:
+            logger.debug("Recording stopped")
+            self._recording_state.stop()
+            raw_data = self._speech_buffer.get_bytes()
+
+            audio_data = AudioData(
+                data=raw_data,
+                format=self._speech_buffer.get_audio_format(),
+                channels=self._speech_buffer.get_channels(),
+                rate=self._speech_buffer.get_sample_rate(),
+            )
+
+            logger.trace(f"Audio data length: {len(audio_data)}")
+
+            if not audio_data:
+                logger.warning("No audio data to process")
+                return
+        
+            self._submit_bg(self._process_recording_async, audio_data)
+    
+    def on_prompt(self, callback: CallbackT):
+        self._prompt_callback = callback
+            
+    def on_immediate_activation(self, callback: CallbackT):
+        self._immediate_activation_callback = callback
+    
+    async def speak(self, text: str):
+        audio = await self._tts_engine.infer(text)
+        self._audio_device.play(audio)
+ 
     def _process_vad(self):
         assert self._vad_model is not None, "VAD model not initialized"
         
@@ -246,59 +302,6 @@ class VoiceClient:
         # Return True if confirmed, False otherwise
         return True
 
-    def start_recording(self, confirmed=False):
-        """
-        Begin recording audio for processing.
-        
-        Args:
-            confirmed (bool): The audio is a confirmed activation and doesn't need confirmation that the speaker
-            is engaging with the voice client.
-        """
-        logger.debug("Recording started")
-        self._recording_state.start()
-        if confirmed:
-            self._recording_state.confirm()
-
-    def stop_recording(self, cancel=False):
-        """
-        Stop recording audio.
-        
-        Args:
-            cancel (bool): Whether the recording was cancelled and the audio should not be processed.
-        """
-        if cancel:
-            logger.debug("Recording cancelled")
-            self._recording_state.stop()
-        elif not self._recording_state.is_processing_speech():
-            logger.debug("Recording not yet confirmed")
-            return
-        else:
-            logger.debug("Recording stopped")
-            self._recording_state.stop()
-            raw_data = self._speech_buffer.get_bytes()
-
-            audio_data = AudioData(
-                data=raw_data,
-                format=self._speech_buffer.get_audio_format(),
-                channels=self._speech_buffer.get_channels(),
-                rate=self._speech_buffer.get_sample_rate(),
-            )
-
-
-            logger.trace(f"Audio data length: {len(audio_data)}")
-
-            if not audio_data:
-                logger.warning("No audio data to process")
-                return
-        
-            self._submit_bg(self._process_recording_async, audio_data)
-    
-    def on_prompt(self, callback: CallbackT):
-        self._prompt_callback = callback
-            
-    def on_immediate_activation(self, callback: CallbackT):
-        self._immediate_activation_callback = callback
-    
     def _process_recording_async(self, audio_data: AudioData) -> None:
         assert isinstance(audio_data, AudioData), f"Expected AudioData, got {type(audio_data)}"
         print("He we heard some audio!!")
