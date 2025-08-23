@@ -1,5 +1,5 @@
 import asyncio
-import logging
+from concurrent.futures import ThreadPoolExecutor, Future
 import numpy as np
 import openwakeword
 from openwakeword import Model as OpenWakeWordModel
@@ -43,7 +43,12 @@ class VoiceClient:
 
         self._confirmation_audios: dict[str, bytes] = {}
 
-        self._tasks: list[asyncio.Task] = []
+        self._bg_futures: set[Future] = set()
+        self._bg_executor: ThreadPoolExecutor | None = ThreadPoolExecutor(
+            max_workers=2,
+            thread_name_prefix="VoiceClient::"
+        )
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     async def initialize(self):
         await self._tts_engine.initialize()
@@ -107,6 +112,7 @@ class VoiceClient:
         assert self._audio_device.running, "Audio device must be running"
 
         try:
+            self._loop = asyncio.get_running_loop()
             self.running = True
             while self.running:
                 wake_word_needed_frames = self._wake_word_chunk_frame_count - self._wake_word_buffer.frame_count()
@@ -135,9 +141,11 @@ class VoiceClient:
     async def stop(self):
         self.running = False
 
-        # Cancel remaining tasks
-        for task in self._tasks:
-            task.cancel()
+        # Shutdown background executor
+        if self._bg_executor is not None:
+            self._bg_executor.shutdown(wait=False, cancel_futures=True)
+            self._bg_executor = None
+        self._bg_futures.clear()
 
     def _process_vad(self):
         assert self._vad_model is not None, "VAD model not initialized"
@@ -212,41 +220,12 @@ class VoiceClient:
                 detected_wake_words = [key for key, value in detection.items() if value > activation_threshold]
                 logger.info(f"\nWake word detected! {detected_wake_words}")
                 self._wake_word_model.reset()
-                for word in detected_wake_words:
-                    logger.debug(f"Detected wake word: {word} VAD: {self._speech_buffer.get_duration_ms()}ms")
-                    raw_audio = self._speech_buffer.get_bytes()
-                    audio_data = AudioData(
-                        data=raw_audio,
-                        rate=self._speech_buffer.get_sample_rate(),
-                        channels=self._speech_buffer.get_channels(),
-                        format=self._speech_buffer.get_audio_format()
-                    )
-                    task = asyncio.create_task(
-                        self._task_confirm_wake_word(word, audio_data),
-                        name="VoiceClient::ConfirmWakeWord"
-                    )
-                    self._tasks.append(task)
-                    task.add_done_callback(self._tasks.remove)
-                    self.start_recording()
+                self._on_wake_words_detected(detected_wake_words)
 
-    async def _task_confirm_wake_word(self, wake_word: str, audio_data: AudioData):
+    def _confirm_wake_word_sync(self, wake_word: str, audio_data: AudioData) -> bool:
         assert isinstance(audio_data, AudioData), f"Expected AudioData, got {type(audio_data)}"
-        if not await self._confirm_wake_word(wake_word, audio_data):
-            logger.debug(f"Wake word {wake_word} not confirmed")
-            self.stop_recording()
-        else:
-            logger.debug(f"Wake word {wake_word} confirmed")
-            confirmation_audio = self._confirmation_audios.get(wake_word)
-            if confirmation_audio:
-                self._audio_device.play(confirmation_audio)
-            self.start_recording(confirmed=True)
-
-        return True
-
-    async def _confirm_wake_word(self, wake_word: str, audio_data: AudioData):
-        assert isinstance(audio_data, AudioData), f"Expected AudioData, got {type(audio_data)}"
-        # TODO: Whisper confirmation
-
+        # TODO: Whisper confirmation (CPU-heavy) goes here synchronously
+        # Return True if confirmed, False otherwise
         return True
 
     def start_recording(self, confirmed=False):
@@ -294,13 +273,66 @@ class VoiceClient:
                 logger.warning("No audio data to process")
                 return
         
-            task = asyncio.create_task(
-                self._process_recording(audio_data),
-                name="VoiceClient::ProcessRecording"
-            )
-            self._tasks.append(task)
-            task.add_done_callback(self._tasks.remove)
+            self._submit_bg(self._process_recording_sync, audio_data)
     
-    async def _process_recording(self, audio_data: AudioData):
+    def _process_recording_sync(self, audio_data: AudioData) -> None:
         assert isinstance(audio_data, AudioData), f"Expected AudioData, got {type(audio_data)}"
         print("He we heard some audio!!")
+
+    def _on_wake_words_detected(self, words: list[str]) -> None:
+        """Schedule confirmation for detected wake words without blocking audio loop."""
+        if not words:
+            return
+        scheduled = False
+        for word in words:
+            logger.debug(f"Detected wake word: {word} VAD: {self._speech_buffer.get_duration_ms()}ms")
+            raw_audio = self._speech_buffer.get_bytes()
+            audio_data = AudioData(
+                data=raw_audio,
+                rate=self._speech_buffer.get_sample_rate(),
+                channels=self._speech_buffer.get_channels(),
+                format=self._speech_buffer.get_audio_format()
+            )
+            self._submit_bg(
+                self._confirm_wake_word_sync,
+                word,
+                audio_data,
+                on_done=lambda f, w=word: self._confirm_done(f, w),
+            )
+            scheduled = True
+
+        if scheduled:
+            # Begin recording immediately while confirmation runs
+            self.start_recording()
+
+    def _confirm_done(self, f: Future, wake: str) -> None:
+        try:
+            confirmed = f.result()
+        except Exception as e:
+            logger.exception(f"Confirm wake word failed: {e}")
+            return
+        if not confirmed:
+            logger.debug(f"Wake word {wake} not confirmed")
+            self.stop_recording()
+        else:
+            logger.debug(f"Wake word {wake} confirmed")
+            confirmation_audio = self._confirmation_audios.get(wake)
+            if confirmation_audio:
+                self._audio_device.play(confirmation_audio)
+            self.start_recording(confirmed=True)
+
+    def _submit_bg(self, fn, *args, on_done=None) -> Future | None:
+        """Submit a function to the background executor and optionally schedule an on_done callback back on the event loop."""
+        if self._bg_executor is None:
+            return None
+        fut: Future = self._bg_executor.submit(fn, *args)
+        self._bg_futures.add(fut)
+
+        def _cb(f: Future):
+            self._bg_futures.discard(f)
+            if on_done is not None and self._loop is not None:
+                # marshal callback to the asyncio loop thread
+                self._loop.call_soon_threadsafe(on_done, f)
+
+        fut.add_done_callback(_cb)
+        return fut
