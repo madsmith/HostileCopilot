@@ -24,7 +24,11 @@ openwakeword:
       path: "./resources/models/scan_this.onnx"
       wake_word_key: "scan_this"
       confirmation_audio: "./resources/audio/scan.mp3"
+      suppress_follow_up: true
     - name: "stop"
       path: "./resources/models/stop.onnx"
+      suppress_follow_up: true
     - name: "analyze_ping"
       path: "./resources/models/analyze_ping.onnx"
+      confirmation_audio: "./resources/audio/scan.mp3"
+      suppress_follow_up: true

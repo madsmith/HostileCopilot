@@ -25,7 +25,10 @@ class VoiceClient:
         self._tts_engine: TTSEngine = TTSEngine(model_id, voices)
 
         self._wake_word_model: OpenWakeWordModel | None = None
-        self._wake_word_config: dict[str, dict[str, str]] = self._config.get("openwakeword.models")
+        self._wake_word_config: dict[str, dict[str, str]] = {}
+        for model in self._config.get("openwakeword.models"):
+            self._wake_word_config[model.get("name")] = model
+
         self._vad_model: OnnxWrapper | None = None
         # self._whisper_engine: AudioInferenceEngine | None = None
 
@@ -68,7 +71,7 @@ class VoiceClient:
 
         models: list[str] = [
             model.path if "path" in model else model.name
-            for model in self._wake_word_config
+            for model in self._wake_word_config.values()
         ]
 
         if len(models) == 0:
@@ -93,7 +96,7 @@ class VoiceClient:
         if self._wake_word_config == None:
             raise ValueError("Missing config 'openwakeword.models'")
         
-        for model in self._wake_word_config:
+        for model in self._wake_word_config.values():
             if "confirmation_audio" in model:
                 assert "name" in model, "Missing model name in config 'openwakeword.models'"
                 if model["confirmation_audio"].endswith(".mp3"):
@@ -279,6 +282,10 @@ class VoiceClient:
         assert isinstance(audio_data, AudioData), f"Expected AudioData, got {type(audio_data)}"
         print("He we heard some audio!!")
 
+    def _process_immediate_wake_activation(self, wake_word: str) -> None:
+        assert isinstance(wake_word, str), f"Expected str, got {type(wake_word)}"
+        print("Immediate wake activation: " + wake_word)
+        
     def _on_wake_words_detected(self, words: list[str]) -> None:
         """Schedule confirmation for detected wake words without blocking audio loop."""
         if not words:
@@ -286,6 +293,7 @@ class VoiceClient:
         scheduled = False
         for word in words:
             logger.debug(f"Detected wake word: {word} VAD: {self._speech_buffer.get_duration_ms()}ms")
+
             raw_audio = self._speech_buffer.get_bytes()
             audio_data = AudioData(
                 data=raw_audio,
@@ -305,21 +313,30 @@ class VoiceClient:
             # Begin recording immediately while confirmation runs
             self.start_recording()
 
-    def _confirm_done(self, f: Future, wake: str) -> None:
+    def _confirm_done(self, f: Future, wake_word: str) -> None:
         try:
             confirmed = f.result()
+        
+            if not confirmed:
+                logger.debug(f"Wake word {wake_word} not confirmed")
+                self.stop_recording()
+            else:
+                logger.debug(f"Wake word {wake_word} confirmed")
+                confirmation_audio = self._confirmation_audios.get(wake_word)
+                if confirmation_audio:
+                    self._audio_device.play(confirmation_audio)
+
+                print("Type of config: " + str(type(self._wake_word_config)))
+                print(self._wake_word_config[wake_word])
+                if self._wake_word_config[wake_word].get("suppress_follow_up", False):
+                    # TODO: raise event to notify UI
+                    self.stop_recording(cancel=True)
+                    self._submit_bg(self._process_immediate_wake_activation, wake_word)
+
+                self.start_recording(confirmed=True)
         except Exception as e:
             logger.exception(f"Confirm wake word failed: {e}")
-            return
-        if not confirmed:
-            logger.debug(f"Wake word {wake} not confirmed")
-            self.stop_recording()
-        else:
-            logger.debug(f"Wake word {wake} confirmed")
-            confirmation_audio = self._confirmation_audios.get(wake)
-            if confirmation_audio:
-                self._audio_device.play(confirmation_audio)
-            self.start_recording(confirmed=True)
+            self.stop_recording(cancel=True)
 
     def _submit_bg(self, fn, *args, on_done=None) -> Future | None:
         """Submit a function to the background executor and optionally schedule an on_done callback back on the event loop."""
@@ -331,8 +348,13 @@ class VoiceClient:
         def _cb(f: Future):
             self._bg_futures.discard(f)
             if on_done is not None and self._loop is not None:
-                # marshal callback to the asyncio loop thread
-                self._loop.call_soon_threadsafe(on_done, f)
+                # marshal callback to the asyncio loop thread, but ensure exceptions don't kill the loop
+                def _safe_on_done():
+                    try:
+                        on_done(f)
+                    except Exception as e:
+                        logger.exception(f"Background completion handler failed: {e}")
+                self._loop.call_soon_threadsafe(_safe_on_done)
 
         fut.add_done_callback(_cb)
         return fut
