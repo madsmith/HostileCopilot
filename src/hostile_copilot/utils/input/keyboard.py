@@ -107,12 +107,10 @@ class Keyboard:
         ik = interkey_delay if interkey_delay is not None else self._sample_delay(self._interkey_mean, self._interkey_std)
         pd = press_duration if press_duration is not None else self._sample_delay(self._press_mean, self._press_std)
         
-        print(f"Queueing key press: {key_obj}")
         await self._queue.put(_PressReq(key=key_obj, interkey_delay=ik, press_duration=pd))
 
     async def type_sequence(self, keys: Iterable[KeyLikeT], interkey_delay: float | None = None):
         for k in keys:
-            print(f"Key: {k}")
             await self.press_key(k, interkey_delay=interkey_delay)
 
     # ---------- Internal ----------

@@ -92,9 +92,6 @@ class HostileCoPilotApp:
                 ("vkbd:sequence", list("hello"), {"interkey_delay": 0.02}),
             ])
             await task.run()
-            print("Macro completed")
-            await asyncio.sleep(5)
-            print("returning")
             
             # task = GetScreenLocationTask(self._config)
             # await task.run()

@@ -236,7 +236,7 @@ class VoiceClient:
 
             if any(value > activation_threshold for value in detection.values()):
                 detected_wake_words = [key for key, value in detection.items() if value > activation_threshold]
-                logger.info(f"\nWake word detected! {detected_wake_words}")
+                logger.info(f"Wake word detected! {detected_wake_words}")
                 self._wake_word_model.reset()
                 self._on_wake_words_detected(detected_wake_words)
 
