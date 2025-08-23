@@ -3,9 +3,9 @@ import threading
 
 
 from hostile_copilot.utils import StateMachine
-from hostile_copilot.utils.logging import TraceLogger
+from hostile_copilot.utils.logging import get_trace_logger
 
-logger = TraceLogger(__name__)
+logger = get_trace_logger(__name__)
 
 class RecState(Enum):
     STOPPED = auto()

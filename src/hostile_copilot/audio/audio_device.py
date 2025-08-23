@@ -10,8 +10,8 @@ import time
 from scipy.signal import stft, istft
 from scipy.ndimage import uniform_filter1d
 
-from hostile_copilot.utils.logging import TraceLogger
-logger = TraceLogger(__name__)
+from hostile_copilot.utils.logging import get_trace_logger
+logger = get_trace_logger(__name__)
 
 from .audio_data import AudioData
 from .mixer import ChannelMixer

@@ -9,11 +9,11 @@ from silero_vad.model import OnnxWrapper
 from hostile_copilot.audio import AudioDevice, AudioBuffer, AudioData, numpy_to_tensor, load_wave_file, load_mp3_file
 from hostile_copilot.config import OmegaConfig
 from hostile_copilot.tts.engine import TTSEngine
-from hostile_copilot.utils.logging import TraceLogger
+from hostile_copilot.utils.logging import get_trace_logger
 
 from .recording_state import RecordingState, RecState, RecEvent
 
-logger = TraceLogger(__name__)
+logger = get_trace_logger(__name__)
 
 class VoiceClient:
     def __init__(self, config: OmegaConfig, audio_device: AudioDevice):
@@ -25,6 +25,7 @@ class VoiceClient:
         self._tts_engine: TTSEngine = TTSEngine(model_id, voices)
 
         self._wake_word_model: OpenWakeWordModel | None = None
+        self._wake_word_config: dict[str, dict[str, str]] = self._config.get("openwakeword.models")
         self._vad_model: OnnxWrapper | None = None
         # self._whisper_engine: AudioInferenceEngine | None = None
 
@@ -40,7 +41,7 @@ class VoiceClient:
         self._silence_duration: float = 0.0
         self._recording_state: RecordingState = RecordingState()
 
-        self._confirmation_audio: bytes | None = None
+        self._confirmation_audios: dict[str, bytes] = {}
 
         self._tasks: list[asyncio.Task] = []
 
@@ -54,18 +55,15 @@ class VoiceClient:
         self._initialize_vad_model()
 
         # Load confirmation audio
-        self._confirmation_audio = load_wave_file("./resources/audio/activation.wav")
-        self._scan_audio = load_mp3_file("./resources/audio/scan.mp3")
+        self._load_confirmation_audio()
 
     def _initialize_wake_word_models(self):
-        model_config: dict[str, str] = self._config.get("openwakeword.models")
-
-        if model_config == None:
+        if self._wake_word_config == None:
             raise ValueError("Missing config 'openwakeword.models'")
 
         models: list[str] = [
             model.path if "path" in model else model.name
-            for model in model_config
+            for model in self._wake_word_config
         ]
 
         if len(models) == 0:
@@ -85,6 +83,20 @@ class VoiceClient:
             inference_framework=inference_framework,
             enable_speex_noise_suppression=False
         )
+
+    def _load_confirmation_audio(self):
+        if self._wake_word_config == None:
+            raise ValueError("Missing config 'openwakeword.models'")
+        
+        for model in self._wake_word_config:
+            if "confirmation_audio" in model:
+                assert "name" in model, "Missing model name in config 'openwakeword.models'"
+                if model["confirmation_audio"].endswith(".mp3"):
+                    self._confirmation_audios[model["name"]] = load_mp3_file(model["confirmation_audio"])
+                elif model["confirmation_audio"].endswith(".wav"):
+                    self._confirmation_audios[model["name"]] = load_wave_file(model["confirmation_audio"])
+                else:
+                    raise ValueError(f"Invalid confirmation audio format: {model['confirmation_audio']}")
 
     def _initialize_vad_model(self):
         self._vad_model = silero_vad.load_silero_vad()
@@ -224,7 +236,10 @@ class VoiceClient:
             self.stop_recording()
         else:
             logger.debug(f"Wake word {wake_word} confirmed")
-            self._audio_device.play(self._confirmation_audio)
+            print(self._confirmation_audios.keys())
+            confirmation_audio = self._confirmation_audios.get(wake_word)
+            if confirmation_audio:
+                self._audio_device.play(confirmation_audio)
             self.start_recording(confirmed=True)
 
         return True
@@ -232,8 +247,6 @@ class VoiceClient:
     async def _confirm_wake_word(self, wake_word: str, audio_data: AudioData):
         assert isinstance(audio_data, AudioData), f"Expected AudioData, got {type(audio_data)}"
         # TODO: Whisper confirmation
-
-
 
         return True
 

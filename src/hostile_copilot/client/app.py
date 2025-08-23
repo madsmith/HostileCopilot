@@ -32,10 +32,11 @@ class HostileCoPilotApp:
 
         logger.info("Initializing AudioDevice...")
         self._audio_device.initialize()
-        self._audio_device.start()
 
         logger.info("Initializing VoiceClient...")
         await self._voice_client.initialize()
+
+        self._audio_device.start()
 
     async def run(self):
         self._is_running = True

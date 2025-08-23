@@ -16,11 +16,15 @@ tts:
 openwakeword:
   inference_framework: "onnx"
   models:
-    - name: "agent"
+    - name: "mining_logger"
       path: "./resources/models/mining_logger.onnx"
-    - name: "scan"
+      wake_word_key: "mining_logger"
+      confirmation_audio: "./resources/audio/activation.wav"
+    - name: "scan_this"
       path: "./resources/models/scan_this.onnx"
+      wake_word_key: "scan_this"
+      confirmation_audio: "./resources/audio/scan.mp3"
     - name: "stop"
       path: "./resources/models/stop.onnx"
-    - name: "ping"
+    - name: "analyze_ping"
       path: "./resources/models/analyze_ping.onnx"

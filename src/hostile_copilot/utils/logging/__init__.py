@@ -1,5 +1,6 @@
-from .trace import TraceLogger
+from .trace import TraceAdapter, get_trace_logger
 
 __all__ = [
-    "TraceLogger",
+    "TraceAdapter",
+    "get_trace_logger",
 ]
