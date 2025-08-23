@@ -91,7 +91,7 @@ git clone https://github.com/martin/HostileCoPilot.git
 cd HostileCoPilot
 
 :: Create virtual environment
-py -3.12 -m venv .venv
+uv venv
 .venv\Scripts\activate.bat
 
 :: Install development dependencies
