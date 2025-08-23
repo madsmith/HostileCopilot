@@ -319,7 +319,7 @@ class VoiceClient:
         if self._prompt_callback:
             try:
                 if asyncio.iscoroutinefunction(self._prompt_callback):
-                    asyncio.create_task(self._prompt_callback(text))
+                    asyncio.run_coroutine_threadsafe(self._prompt_callback(text), self._loop)
                 else:
                     self._prompt_callback(text)
             except Exception as e:
@@ -330,7 +330,7 @@ class VoiceClient:
         if self._immediate_activation_callback:
             try:
                 if asyncio.iscoroutinefunction(self._immediate_activation_callback):
-                    asyncio.create_task(self._immediate_activation_callback(wake_word))
+                    asyncio.run_coroutine_threadsafe(self._immediate_activation_callback(wake_word), self._loop)
                 else:
                     self._immediate_activation_callback(wake_word)
             except Exception as e:
