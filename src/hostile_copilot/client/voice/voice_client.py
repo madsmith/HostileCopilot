@@ -47,7 +47,8 @@ class VoiceClient:
         self._silence_duration: float = 0.0
         self._recording_state: RecordingState = RecordingState()
 
-        self._confirmation_audios: dict[str, bytes] = {}
+        self._confirmation_audios: dict[str, str] = {}
+        self._audio_resources: dict[str, bytes] = {}
 
         self._bg_futures: set[Future] = set()
         self._bg_executor: ThreadPoolExecutor | None = ThreadPoolExecutor(
@@ -103,12 +104,18 @@ class VoiceClient:
         for model in self._wake_word_config.values():
             if "confirmation_audio" in model:
                 assert "name" in model, "Missing model name in config 'openwakeword.models'"
-                if model["confirmation_audio"].endswith(".mp3"):
-                    self._confirmation_audios[model["name"]] = load_mp3_file(model["confirmation_audio"])
-                elif model["confirmation_audio"].endswith(".wav"):
-                    self._confirmation_audios[model["name"]] = load_wave_file(model["confirmation_audio"])
-                else:
-                    raise ValueError(f"Invalid confirmation audio format: {model['confirmation_audio']}")
+
+                resource_name = model["confirmation_audio"]
+
+                if not resource_name in self._audio_resources:
+                    if resource_name.endswith(".mp3"):
+                        self._audio_resources[resource_name] = load_mp3_file(resource_name)
+                    elif resource_name.endswith(".wav"):
+                        self._audio_resources[resource_name] = load_wave_file(resource_name)
+                    else:
+                        raise ValueError(f"Invalid confirmation audio format: {model['confirmation_audio']}")
+                
+                self._confirmation_audios[model["name"]] = resource_name
 
     def _initialize_vad_model(self):
         self._vad_model = silero_vad.load_silero_vad()
@@ -333,9 +340,10 @@ class VoiceClient:
                 self.stop_recording()
             else:
                 logger.debug(f"Wake word {wake_word} confirmed")
-                confirmation_audio = self._confirmation_audios.get(wake_word)
-                if confirmation_audio:
-                    self._audio_device.play(confirmation_audio)
+                resource_name = self._confirmation_audios.get(wake_word)
+                if resource_name:
+                    assert resource_name in self._audio_resources, f"Missing audio resource: {resource_name}"
+                    self._audio_device.play(self._audio_resources[resource_name])
 
                 if self._wake_word_config[wake_word].get("suppress_follow_up", False):
                     # TODO: raise event to notify UI
