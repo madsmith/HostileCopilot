@@ -154,6 +154,8 @@ class Key:
         else:
             return self._scan_code
 
+    def __repr__(self):
+        return f"Key({self._name}, {self._scan_code}, {self._is_extended}, {self._virtual_code})"
 
 def _scan_code_to_virtual_code(scan_code, is_extended):
     """Returns the virtual code corresponding to the given scan code.
