@@ -1,5 +1,6 @@
 from typing import Any
 from omegaconf import OmegaConf, DictConfig, ListConfig
+from pathlib import Path
 
 class OmegaConfig:
     def __init__(self, config: DictConfig | ListConfig):
@@ -71,10 +72,20 @@ class OmegaConfig:
     def __repr__(self) -> str:
         return f"NexusConfig({repr(self._config)})"
 
-def load_config() -> OmegaConfig:
-    config = OmegaConf.load("config/config.yaml")
-    config_private = OmegaConf.load("config/config_private.yaml")
-    config = OmegaConf.merge(config, config_private)
+def load_config(config_file: Path | str | None = None) -> OmegaConfig:
+    if config_file is None:
+        config_file = Path("config/config.yaml")
+    elif isinstance(config_file, str):
+        config_file = Path(config_file)
+    
+    config = OmegaConf.load(config_file)
+
+    # Add _private to config file name
+    private_file = config_file.with_name(config_file.stem + "_private.yaml")
+    print(f"Private file: {private_file}")
+    if private_file.exists():
+        config_private = OmegaConf.load(private_file)
+        config = OmegaConf.merge(config, config_private)
 
     # Resolve any relative paths
     OmegaConf.resolve(config)
