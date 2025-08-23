@@ -124,7 +124,7 @@ class VoiceClient:
                 self._confirmation_audios[model["name"]] = resource_name
 
     def _initialize_vad_model(self):
-        self._vad_model = silero_vad.load_silero_vad()
+        self._vad_model = silero_vad.load_silero_vad(onnx=True)
         if self._vad_model is None:
             raise RuntimeError("Failed to load VAD model")
 
