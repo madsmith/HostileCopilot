@@ -90,7 +90,6 @@ def load_config(config_file: Path | str | None = None) -> OmegaConfig:
 
     # Add _private to config file name
     private_file = config_file.with_name(config_file.stem + "_private.yaml")
-    print(f"Private file: {private_file}")
     if private_file.exists():
         config_private = OmegaConf.load(private_file)
         config = OmegaConf.merge(config, config_private)
