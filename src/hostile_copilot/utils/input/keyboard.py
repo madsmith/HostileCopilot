@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import random
 import time
 from dataclasses import dataclass
@@ -11,6 +12,8 @@ from .gremlin.keyboard import (
     key_from_name,
     key_from_code,
 )
+
+logger = logging.getLogger(__name__)
 
 # Public key-like type accepted by this module
 KeyLikeT = Key | str | tuple[int, bool] | int
@@ -100,34 +103,51 @@ class Keyboard:
         ik = interkey_delay if interkey_delay is not None else self._sample_delay(self._interkey_mean, self._interkey_std)
         pd = press_duration if press_duration is not None else self._sample_delay(self._press_mean, self._press_std)
         
+        print(f"Queueing key press: {key_obj}")
         await self._queue.put(_PressReq(key=key_obj, interkey_delay=ik, press_duration=pd))
 
-    async def type_sequence(self, keys: Iterable[KeyLikeT]):
+    async def type_sequence(self, keys: Iterable[KeyLikeT], interkey_delay: float | None = None):
         for k in keys:
-            await self.press_key(k)
+            print(f"Key: {k}")
+            await self.press_key(k, interkey_delay=interkey_delay)
 
     # ---------- Internal ----------
     async def _worker(self):
+        logger.debug("Keyboard worker started")
         while self._running:
-            req = await self._queue.get()
-            if not self._running:
-                break
-            # Enforce start time based on last start + req.interkey_delay
-            now = time.monotonic()
-            planned_start = max(self._last_start + req.interkey_delay, now)
-            sleep_s = planned_start - now
-            if sleep_s > 0:
-                await asyncio.sleep(sleep_s)
+            try:
+                req = await self._queue.get()
+                logger.debug(f"Dequeued: {req}")
 
-            # Start press (do not await completion to allow overlap)
-            self._last_start = time.monotonic()
-            t = asyncio.create_task(self._do_press(req), name=f"Keyboard::press::{getattr(req.key, 'name', 'key')}")
-            self._active.add(t)
-            t.add_done_callback(self._active.discard)
+                # Check for stop signal
+                if not self._running:
+                    break
+
+                # Enforce start time based on last start + req.interkey_delay
+                now = time.monotonic()
+                planned_start = max(self._last_start + req.interkey_delay, now)
+                sleep_s = planned_start - now
+                if sleep_s > 0:
+                    await asyncio.sleep(sleep_s)
+
+                # Start press (do not await completion to allow overlap)
+                self._last_start = time.monotonic()
+                t = asyncio.create_task(
+                    self._do_press(req),
+                    name=f"Keyboard::press::{getattr(req.key, 'name', 'key')}"
+                )
+                self._active.add(t)
+                t.add_done_callback(self._active.discard)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.exception(f"Keyboard worker error: {e}")
+                break
 
     async def _do_press(self, req: _PressReq):
         sent_down = False
         try:
+            logger.debug(f"Pressing key: {req.key}")
             send_key_down(req.key)
             sent_down = True
             await asyncio.sleep(max(self._min_delay, req.press_duration))
@@ -139,6 +159,7 @@ class Keyboard:
             pass
         finally:
             if sent_down:
+                logger.debug(f"Releasing key: {req.key}")
                 try:
                     send_key_up(req.key)
                 except Exception:

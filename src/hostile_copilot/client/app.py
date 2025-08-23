@@ -3,8 +3,8 @@ import logging
 import pyaudio
 
 from hostile_copilot.config import OmegaConfig
-from hostile_copilot.tts.engine import TTSEngine
-from hostile_copilot.audio import AudioDevice, load_wave_file, save_wave_file
+from hostile_copilot.audio import AudioDevice
+from hostile_copilot.utils.input.keyboard import Keyboard
 
 from .voice import VoiceClient
 from .tasks import (
@@ -30,6 +30,8 @@ class HostileCoPilotApp:
         self._voice_client: VoiceClient = VoiceClient(self._config, self._audio_device)
         self._voice_task: asyncio.Task | None = None
 
+        self._keyboard = Keyboard()
+
         self._is_running: bool = False
 
     async def initialize(self):
@@ -40,6 +42,9 @@ class HostileCoPilotApp:
 
         logger.info("Initializing VoiceClient...")
         await self._voice_client.initialize()
+
+        logger.info("Initializing Keyboard...")
+        await self._keyboard.start()
 
         self._voice_client.on_prompt(self._on_prompt)
         self._voice_client.on_immediate_activation(self._on_immediate_activation)
@@ -69,6 +74,8 @@ class HostileCoPilotApp:
         if self._voice_task is not None:
             await self._voice_task
 
+        await self._keyboard.stop()
+
     def _on_prompt(self, prompt: str):
         print(f"Prompt: {prompt}")
 
@@ -77,19 +84,19 @@ class HostileCoPilotApp:
         if wake_word == "scan_this":
             location = (3186, 426)
             
-            task = MacroTask(self._config)
+            task = MacroTask(self._config, self._keyboard)
             task.set_macro([
+                ("sleep", 2),
                 ("click", location),
-                ("sleep", 0.5),
-                ("press", "`"),
-                ("sleep", 0.5),
-                ("keyDown", "`"),
-                ("sleep", 0.5),
-                ("keyUp", "`"),
-                ("typewrite", "hello", {"interval": 0.5}),
-                ("sleep", 0.5)
+                ("vkbd:sequence", list("hello"), {"interkey_delay": 1}),
+                ("sleep", 5),
+                ("vkbd:press", "f2"),
+                ("vkbd:sequence", list("hello"), {"interkey_delay": 0.01}),
             ])
             await task.run()
+            print("Macro completed")
+            await asyncio.sleep(5)
+            print("returning")
             
             # task = GetScreenLocationTask(self._config)
             # await task.run()
