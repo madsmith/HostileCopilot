@@ -66,9 +66,12 @@ class AudioData:
 
     def end_time(self) -> float:
         return self.timestamp + self.duration()
+
+    def get_sample_size(self) -> int:
+        return pyaudio.get_sample_size(self.format)
     
     def get_type_info(self):
-        sample_size = pyaudio.get_sample_size(self.format)
+        sample_size = self.get_sample_size()
         if sample_size == 1:
             return np.uint8, np.iinfo(np.uint8)
         elif sample_size == 2:

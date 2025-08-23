@@ -34,9 +34,9 @@ def save_wave_file(audio_data: AudioData | AudioBuffer | AudioSegment, file_path
 
     if isinstance(audio_data, AudioData):
         channels = audio_data.channels
-        sample_size, _ = audio_data.get_type_info()
+        sample_size = audio_data.get_sample_size()
         rate = audio_data.rate
-        data = audio_data._raw_data
+        data = audio_data.as_bytes()
 
     elif isinstance(audio_data, AudioBuffer):
         channels = audio_data.get_channels()
@@ -51,11 +51,12 @@ def save_wave_file(audio_data: AudioData | AudioBuffer | AudioSegment, file_path
         data = audio_data.raw_data
 
     with wave.open(file_path, 'wb') as wf:
-        print(f"Saving wave file: {file_path}, {channels} channels, {sample_size} bytes per sample, {rate} Hz")
+        #print(f"Saving wave file: {file_path}, {channels} channels, {sample_size} bytes per sample, {rate} Hz [{len(data)} bytes]")
         wf.setnchannels(channels)
         wf.setsampwidth(sample_size)
         wf.setframerate(rate)
         wf.writeframes(data)
+        #print(f"Saved wave file: {file_path}")
 
 async def save_wave_file_async(audio_data: AudioData | AudioBuffer | AudioSegment, file_path: str | Path) -> None:
     await asyncio.to_thread(save_wave_file, audio_data, file_path)
@@ -87,9 +88,8 @@ def save_mp3_file(audio_data: AudioData | AudioBuffer | AudioSegment, filename: 
     if isinstance(audio_data, AudioData):
         frames = audio_data.as_bytes()
         sample_rate = audio_data.rate
-        format = audio_data.format
         channels = audio_data.channels
-        sample_size, _ = audio_data.get_type_info()
+        sample_size = audio_data.get_sample_size()
         recording = AudioSegment(
             data=frames,
             sample_width=sample_size,
