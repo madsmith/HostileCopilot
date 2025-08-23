@@ -35,6 +35,7 @@ dependencies = [
     "pyautogui>=0.9.54",
     "pillow>=11.3.0",
     "opencv-python>=4.12.0.88",
+    "pynput>=1.8.1",
 ]
 
 [project.optional-dependencies]
@@ -69,3 +70,8 @@ environments = ["sys_platform == 'win32'"]
 python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
+
+[dependency-groups]
+dev = [
+    "pympler>=1.1",
+]

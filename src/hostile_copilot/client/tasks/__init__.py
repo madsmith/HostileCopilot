@@ -1,7 +1,13 @@
 from .base import Task
+from .types import Coordinate
 from .screen_bounding_box import GetScreenBoundingBoxTask
+from .screen_get_location import GetScreenLocationTask
+from .macro import MacroTask
 
 __all__ = [
     "Task",
-    "GetScreenBoundingBoxTask"
+    "Coordinate",
+    "GetScreenBoundingBoxTask",
+    "GetScreenLocationTask",
+    "MacroTask"
 ]

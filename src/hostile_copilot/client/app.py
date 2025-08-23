@@ -7,7 +7,12 @@ from hostile_copilot.tts.engine import TTSEngine
 from hostile_copilot.audio import AudioDevice, load_wave_file, save_wave_file
 
 from .voice import VoiceClient
-from .tasks import Task, GetScreenBoundingBoxTask
+from .tasks import (
+    Task,
+    GetScreenBoundingBoxTask,
+    GetScreenLocationTask,
+    MacroTask
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,35 +59,15 @@ class HostileCoPilotApp:
             self._is_running = False
             return
 
-        # audio = await self._tts_engine.infer("Hello, how are you?")
-        # print(f"Generated {len(audio)} bytes of audio.")
-
-        # audio = audio.resample(16000)
-        # self._audio_device.play(audio)
-
-        # print(f"Sleeping for {audio.duration()} seconds")
-        # await asyncio.sleep(audio.duration())
-        # print("Audio should be done")
-
-        # audio = load_wave_file("resources/stereo_test.wav")
-        # print(f"Loaded wave file: {audio.rate} Hz, {audio.channels} channels, {len(audio)} bytes")
-        # new_audio = audio.resample(16000)
-        # self._audio_device.play(new_audio)
-
-        # print(f"Sleeping for {new_audio.duration()} seconds")
-        # await asyncio.sleep(new_audio.duration())
-        # print("Audio should be done")
-        
-        # save_wave_file(new_audio, "resources/stereo_test_resampled.wav")
-
         while self._is_running:
             try:
-                await asyncio.sleep(1)
+                await asyncio.sleep(.2)
             except KeyboardInterrupt:
                 self._is_running = False
 
 
-        await self._voice_task
+        if self._voice_task is not None:
+            await self._voice_task
 
     def _on_prompt(self, prompt: str):
         print(f"Prompt: {prompt}")
@@ -90,6 +75,26 @@ class HostileCoPilotApp:
     async def _on_immediate_activation(self, wake_word: str):
         logger.info(f"Immediate activation: {wake_word}")
         if wake_word == "scan_this":
-            task = GetScreenBoundingBoxTask(self._config)
+            location = (3186, 426)
+            
+            task = MacroTask(self._config)
+            task.set_macro([
+                ("click", location),
+                ("sleep", 0.5),
+                ("press", "`"),
+                ("sleep", 0.5),
+                ("keyDown", "`"),
+                ("sleep", 0.5),
+                ("keyUp", "`"),
+                ("typewrite", "hello", {"interval": 0.5}),
+                ("sleep", 0.5)
+            ])
             await task.run()
-            print(f"Calibrated screen: {task._start} to {task._end}")
+            
+            # task = GetScreenLocationTask(self._config)
+            # await task.run()
+            # print(f"Located click: {task.last_click}")
+            
+            # task = GetScreenBoundingBoxTask(self._config)
+            # await task.run()
+            # print(f"Calibrated screen: {task._start} to {task._end}")

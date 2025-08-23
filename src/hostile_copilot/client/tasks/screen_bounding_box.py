@@ -1,6 +1,5 @@
 import asyncio
 import cv2
-from dataclasses import dataclass
 import logging
 import numpy as np
 import time
@@ -8,19 +7,16 @@ import pyautogui
 from PIL.Image import Image
 
 from hostile_copilot.config import OmegaConfig
-from hostile_copilot.client.tasks.base import Task
+
+from .base import Task
+from .types import Coordinate
 
 logger = logging.getLogger(__name__)
-
-@dataclass
-class Coordinate:
-    x: int
-    y: int
 
 class GetScreenBoundingBoxTask(Task):
     def __init__(self, config: OmegaConfig):
         super().__init__(config)
-        
+
         self._start: Coordinate | None = None
         self._end: Coordinate | None = None
         self._is_cropping: bool = False
@@ -35,6 +31,20 @@ class GetScreenBoundingBoxTask(Task):
         self._final_alpha_mask: float = 0.60
         self._final_delay: int = 1500
         
+    @property
+    def start(self) -> Coordinate | None:
+        return self._start
+    
+    @property
+    def end(self) -> Coordinate | None:
+        return self._end
+    
+    @property
+    def bounding_box(self) -> tuple[Coordinate, Coordinate] | None:
+        if self._start is None or self._end is None:
+            return None
+        return self._start, self._end
+
     async def run(self):
         await asyncio.to_thread(self.calibration_routine)
 
