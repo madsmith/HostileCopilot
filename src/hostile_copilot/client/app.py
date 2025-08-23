@@ -1,11 +1,14 @@
 import asyncio
 import logging
+import omegaconf
+from pathlib import Path
 from pydantic_ai import Agent
+from pydantic_ai.toolsets import FunctionToolset
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.models.openai import OpenAIModel
 import pyaudio
 
-from hostile_copilot.config import OmegaConfig
+from hostile_copilot.config import OmegaConfig, load_config
 from hostile_copilot.audio import AudioDevice
 from hostile_copilot.utils.input.keyboard import Keyboard
 
@@ -22,6 +25,14 @@ logger = logging.getLogger(__name__)
 class HostileCoPilotApp:
     def __init__(self, config: OmegaConfig):
         self._config = config
+
+        app_config_path = self._config.get("app.config", "config/settings.yaml")
+        self._app_config_path = Path(app_config_path)
+
+        if not self._app_config_path.exists():
+            self._app_config_path.touch()
+
+        self._app_config = load_config(self._app_config_path)
 
         self._audio_device: AudioDevice = AudioDevice(
             format=pyaudio.paInt16,
@@ -70,9 +81,21 @@ class HostileCoPilotApp:
             provider=provider,
             model_name=model_id,
         )
+
+        # Tool registration
+        toolset = FunctionToolset(tools=[
+            self._tool_perform_test,
+        ])
+
+        calibration_toolset = FunctionToolset(tools=[
+            self._tool_setup_mining_calibration,
+        ])
+
         agent = Agent(
             model=model,
             system_prompt=system_prompt,
+            toolsets=[toolset, calibration_toolset],
+
         )
         self._agent = agent
     
@@ -133,3 +156,33 @@ class HostileCoPilotApp:
             # task = GetScreenBoundingBoxTask(self._config)
             # await task.run()
             # print(f"Calibrated screen: {task._start} to {task._end}")
+
+    async def _tool_perform_test(self):
+        """
+        Perform a test
+        """
+        print("Performing test")
+        await self._voice_client.speak("Test")
+
+    async def _tool_setup_mining_calibration(self):
+        """
+        One time task to calibrate the game screen UI coordinates for extracting
+        mining data.
+        """
+        task = GetScreenBoundingBoxTask(self._config)
+        await task.run()
+        
+        start, end = task.bounding_box
+
+        # Ensure path exists... TODO: make config support defaulting path parents
+        if "calibration" not in self._app_config:
+            self._app_config.set("calibration", {})
+        if "calibration.mining_scan" not in self._app_config:
+            self._app_config.set("calibration.mining_scan", {})
+        
+        self._app_config.set("calibration.mining_scan.start_x", start.x)
+        self._app_config.set("calibration.mining_scan.start_y", start.y)
+        self._app_config.set("calibration.mining_scan.end_x", end.x)
+        self._app_config.set("calibration.mining_scan.end_y", end.y)
+
+        omegaconf.OmegaConf.save(self._app_config._config, self._app_config_path)

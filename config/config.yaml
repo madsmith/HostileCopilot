@@ -5,6 +5,9 @@ openai:
 uexcorp:
   bearer_token: "${private.uexcorp.bearer_token}"
 
+app:
+  config: "config/settings.yaml"
+  
 agent:
   api_key: "${openai.api_key}"
   model_id: "gpt-4o-mini"

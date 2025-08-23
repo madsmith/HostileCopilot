@@ -1,13 +1,21 @@
 from typing import Any
-from omegaconf import OmegaConf, DictConfig, ListConfig
+from omegaconf import OmegaConf, DictConfig, ListConfig, MISSING
 from pathlib import Path
 
 class OmegaConfig:
     def __init__(self, config: DictConfig | ListConfig):
+        assert isinstance(config, (DictConfig, ListConfig)), f"Config must be a DictConfig or ListConfig, got {type(config)}"
         self._config = config
 
     def get(self, key: str, default: Any = None) -> Any:
         return OmegaConf.select(self._config, key, default=default)
+
+    def __contains__(self, key: str) -> bool:
+        """
+        Support `'key' in OmegaConfig` using OmegaConf's select with a sentinel.
+        Returns True if the key path exists in the config (even if its value is None).
+        """
+        return OmegaConf.select(self._config, key, default=MISSING) is not MISSING
 
     def set(self, key: str, value: Any) -> None:
         def highlight_key(parts, highlight_idx):
