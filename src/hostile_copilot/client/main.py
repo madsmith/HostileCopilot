@@ -11,8 +11,23 @@ import logging
 
 from hostile_copilot.client.app import HostileCoPilotApp
 from hostile_copilot.config import load_config
+from hostile_copilot.utils.debug.tracemalloc import start_tracemalloc, dump_tracemalloc_diff_every
+from hostile_copilot.utils.debug.objects import dump_object_summary_every
+from hostile_copilot.utils.debug.counts import dump_counts_every
+from hostile_copilot.utils.debug.objects import dump_gc_objects_every
 
 async def run_app(args: argparse.Namespace) -> None:
+    # start_tracemalloc()
+    # dump_tracemalloc_diff_every(
+    #     seconds=30,
+    #     top=20,
+    #     include_patterns=["*hostile_copilot*"],  # focus on repo
+    #     key="traceback",
+    # )
+    # dump_object_summary_every(30)
+    # dump_counts_every(30)
+    # dump_gc_objects_every(120)
+    
     """Run the HostileCoPilot client"""
     logging.info("Starting HostileCoPilot client...")
 
