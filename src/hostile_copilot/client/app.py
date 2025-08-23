@@ -106,7 +106,11 @@ class HostileCoPilotApp:
         print(f"Prompt: {prompt}")
 
         response = await self._agent.run(prompt)
-        print(f"Response: {response}")
+
+        response_text = response.output
+        print(f"Response: {response_text}")
+
+        await self._voice_client.speak(response_text)
 
     async def _on_immediate_activation(self, wake_word: str):
         logger.info(f"Immediate activation: {wake_word}")
