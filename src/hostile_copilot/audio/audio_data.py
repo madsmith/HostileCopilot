@@ -103,7 +103,6 @@ class AudioData:
             audio_tensor = audio_tensor.unsqueeze(0)  # (time,) -> (1, time)
 
         # resample (channels, time)
-        print(f"Resampling from {self.rate} to {new_rate}")
         resampler = torchaudio.transforms.Resample(self.rate, new_rate)
         resampled_audio_tensor: torch.Tensor = resampler(audio_tensor)
 
