@@ -88,10 +88,8 @@ class HostileCoPilotApp:
             task.set_macro([
                 ("sleep", 2),
                 ("click", location),
-                ("vkbd:sequence", list("hello"), {"interkey_delay": 1}),
-                ("sleep", 5),
                 ("vkbd:press", "f2"),
-                ("vkbd:sequence", list("hello"), {"interkey_delay": 0.01}),
+                ("vkbd:sequence", list("hello"), {"interkey_delay": 0.02}),
             ])
             await task.run()
             print("Macro completed")
