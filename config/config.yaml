@@ -13,6 +13,9 @@ tts:
   # Note: kororo supports merging voice weights into an aggregate weight with commas
   voices: ["af_sky,af_heart"]
 
+stt:
+  model_id: "openai/whisper-large-v3-turbo"
+
 openwakeword:
   inference_framework: "onnx"
   models:

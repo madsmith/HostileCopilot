@@ -31,6 +31,8 @@ dependencies = [
     "silero-vad>=5.1.2",
     "pydub>=0.25.1",
     "audioop-lts>=0.2.2",
+    "transformers>=4.55.3",
+    "huggingface-hub[hf-xet]>=0.34.4",
 ]
 
 [project.optional-dependencies]

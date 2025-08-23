@@ -9,6 +9,7 @@ from silero_vad.model import OnnxWrapper
 from hostile_copilot.audio import AudioDevice, AudioBuffer, AudioData, numpy_to_tensor, load_wave_file, load_mp3_file
 from hostile_copilot.config import OmegaConfig
 from hostile_copilot.tts.engine import TTSEngine
+from hostile_copilot.stt.engine import STTEngineLocal
 from hostile_copilot.utils.logging import get_trace_logger
 
 from .recording_state import RecordingState, RecState, RecEvent
@@ -23,6 +24,8 @@ class VoiceClient:
         model_id = self._config.get("tts.model_id")
         voices = self._config.get("tts.voices")
         self._tts_engine: TTSEngine = TTSEngine(model_id, voices)
+
+        self._stt_engine: STTEngineLocal = STTEngineLocal(self._config)
 
         self._wake_word_model: OpenWakeWordModel | None = None
         self._wake_word_config: dict[str, dict[str, str]] = {}
@@ -55,6 +58,7 @@ class VoiceClient:
 
     async def initialize(self):
         await self._tts_engine.initialize()
+        self._stt_engine.initialize()
 
         # Initialize wake word models
         self._initialize_wake_word_models()
@@ -276,11 +280,18 @@ class VoiceClient:
                 logger.warning("No audio data to process")
                 return
         
-            self._submit_bg(self._process_recording_sync, audio_data)
+            self._submit_bg(self._process_recording_async, audio_data)
     
-    def _process_recording_sync(self, audio_data: AudioData) -> None:
+    def _process_recording_async(self, audio_data: AudioData) -> None:
         assert isinstance(audio_data, AudioData), f"Expected AudioData, got {type(audio_data)}"
         print("He we heard some audio!!")
+
+        import time
+        start = time.time()
+        text = self._stt_engine.infer(audio_data)
+        end = time.time()
+        print("Text: " + text)
+        print("Time: " + str(end - start))
 
     def _process_immediate_wake_activation(self, wake_word: str) -> None:
         assert isinstance(wake_word, str), f"Expected str, got {type(wake_word)}"
@@ -326,8 +337,6 @@ class VoiceClient:
                 if confirmation_audio:
                     self._audio_device.play(confirmation_audio)
 
-                print("Type of config: " + str(type(self._wake_word_config)))
-                print(self._wake_word_config[wake_word])
                 if self._wake_word_config[wake_word].get("suppress_follow_up", False):
                     # TODO: raise event to notify UI
                     self.stop_recording(cancel=True)
