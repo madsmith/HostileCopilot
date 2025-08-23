@@ -10,13 +10,7 @@ import time
 from scipy.signal import stft, istft
 from scipy.ndimage import uniform_filter1d
 
-logging.TRACE = logging.DEBUG // 2
-logging.addLevelName(logging.TRACE, "TRACE")
-
-class TraceLogger(logging.Logger):
-    def trace(self, msg, *args, **kwargs):
-        self.log(logging.TRACE, msg, *args, **kwargs)
-
+from hostile_copilot.utils.logging import TraceLogger
 logger = TraceLogger(__name__)
 
 from .audio_data import AudioData

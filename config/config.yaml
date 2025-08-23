@@ -12,3 +12,15 @@ tts:
   # Optionally preload voices. Examples: ["af_sky", "af_sky,af_heart"]
   # Note: kororo supports merging voice weights into an aggregate weight with commas
   voices: ["af_sky,af_heart"]
+
+openwakeword:
+  inference_framework: "onnx"
+  models:
+    - name: "agent"
+      path: "./resources/models/mining_logger.onnx"
+    - name: "scan"
+      path: "./resources/models/scan_this.onnx"
+    - name: "stop"
+      path: "./resources/models/stop.onnx"
+    - name: "ping"
+      path: "./resources/models/analyze_ping.onnx"

@@ -3,10 +3,10 @@ name = "HostileCoPilot"
 version = "0.1.0"
 description = "Star Citizen Companion"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 license = {file = "LICENSE"}
 authors = [
-    {name = "Martin", email = "martin@example.com"},
+    {name = "Martin Smith", email = "msmith@bitmonster.org"},
 ]
 keywords = ["star-citizen", "companion", "gaming", "copilot"]
 classifiers = [
@@ -14,7 +14,7 @@ classifiers = [
     "Intended Audience :: End Users/Desktop",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Games/Entertainment",
 ]
 dependencies = [
@@ -27,6 +27,10 @@ dependencies = [
     "torch>=2.8.0",
     "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
     "torchaudio>=2.8.0",
+    "openwakeword>=0.6.0",
+    "silero-vad>=5.1.2",
+    "pydub>=0.25.1",
+    "audioop-lts>=0.2.2",
 ]
 
 [project.optional-dependencies]
@@ -54,7 +58,10 @@ where = ["src"]
 [tool.setuptools.package-dir]
 "" = "src"
 
+[tool.uv]
+environments = ["sys_platform == 'win32'"]
+
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
