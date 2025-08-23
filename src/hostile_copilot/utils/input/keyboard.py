@@ -49,6 +49,10 @@ class Keyboard:
         self._running: bool = False
         self._last_start: float = 0.0  # monotonic timestamp of last press start
         self._active: set[asyncio.Task] = set()
+        # Track currently depressed keys; guarded by _pressed_lock
+        self._pressed: set[Key] = set()
+        self._pressed_lock = asyncio.Lock()
+        self._pressed_cv = asyncio.Condition(self._pressed_lock)
 
     # ---------- Public API ----------
     async def start(self):
@@ -130,32 +134,48 @@ class Keyboard:
                 if sleep_s > 0:
                     await asyncio.sleep(sleep_s)
 
-                # Start press (do not await completion to allow overlap)
-                self._last_start = time.monotonic()
+                # Start press: wait until the key is actually pressed (key-down) before
+                # allowing the next item to proceed. This preserves actual start ordering.
+                started_evt = asyncio.Event()
                 t = asyncio.create_task(
-                    self._do_press(req),
+                    self._do_press(req, started_evt),
                     name=f"Keyboard::press::{getattr(req.key, 'name', 'key')}"
                 )
                 self._active.add(t)
                 t.add_done_callback(self._active.discard)
+                # Wait for the key to actually go down before moving on
+                await started_evt.wait()
+                self._last_start = time.monotonic()
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.exception(f"Keyboard worker error: {e}")
                 break
 
-    async def _do_press(self, req: _PressReq):
+    async def _do_press(self, req: _PressReq, started_evt: asyncio.Event | None = None):
         sent_down = False
         try:
-            logger.debug(f"Pressing key: {req.key}")
-            send_key_down(req.key)
-            sent_down = True
+            # If key is already depressed, wait until it is released before pressing again
+            async with self._pressed_cv:
+                while req.key in self._pressed:
+                    await self._pressed_cv.wait()
+                logger.debug(f"Pressing key: {req.key}")
+                send_key_down(req.key)
+                self._pressed.add(req.key)
+                sent_down = True
+            if started_evt is not None:
+                started_evt.set()
             await asyncio.sleep(max(self._min_delay, req.press_duration))
         except asyncio.CancelledError:
             # Propagate after ensuring key-up in finally
+            if started_evt is not None and not started_evt.is_set():
+                # Unblock worker if cancellation happens before keydown (best-effort)
+                started_evt.set()
             raise
         except Exception:
             # Swallow unexpected exceptions; ensure key-up in finally
+            if started_evt is not None and not started_evt.is_set():
+                started_evt.set()
             pass
         finally:
             if sent_down:
@@ -164,6 +184,10 @@ class Keyboard:
                     send_key_up(req.key)
                 except Exception:
                     pass
+                finally:
+                    async with self._pressed_cv:
+                        self._pressed.discard(req.key)
+                        self._pressed_cv.notify_all()
 
     def _sample_delay(self, mean: float, std: float) -> float:
         if std <= 0:
