@@ -114,6 +114,16 @@ pytest
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
+## Third-Party Notices
+
+Portions of the virtual keyboard functionality in `src/hostile_copilot/utils/input/gremlin/` are adapted from the Joystick Gremlin project:
+
+- Joystick Gremlin — https://github.com/WhiteMagic/JoystickGremlin
+- Copyright © 2015–2024 Lionel Ott
+- Licensed under the GNU General Public License v3.0 (GPLv3)
+
+Those adapted parts are used under the terms of the GPLv3 license. Please refer to the Joystick Gremlin repository for the full license text and additional details. Redistribution of builds including these portions may be subject to GPLv3 requirements.
+
 ## Acknowledgments
 
 - Star Citizen community for inspiration and feedback
