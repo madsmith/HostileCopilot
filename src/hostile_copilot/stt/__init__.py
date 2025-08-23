@@ -1,5 +1,5 @@
-from .engine_local import STTEngineLocal
+from .engine import STTEngine
 
 __all__ = [
-    "STTEngineLocal"
+    "STTEngine"
 ]

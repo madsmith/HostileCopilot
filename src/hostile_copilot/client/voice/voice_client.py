@@ -9,7 +9,7 @@ from silero_vad.model import OnnxWrapper
 from hostile_copilot.audio import AudioDevice, AudioBuffer, AudioData, numpy_to_tensor, load_wave_file, load_mp3_file
 from hostile_copilot.config import OmegaConfig
 from hostile_copilot.tts.engine import TTSEngine
-from hostile_copilot.stt.engine import STTEngineLocal
+from hostile_copilot.stt.engine import STTEngine
 from hostile_copilot.utils.logging import get_trace_logger
 
 from .recording_state import RecordingState, RecState, RecEvent
@@ -25,7 +25,7 @@ class VoiceClient:
         voices = self._config.get("tts.voices")
         self._tts_engine: TTSEngine = TTSEngine(model_id, voices)
 
-        self._stt_engine: STTEngineLocal = STTEngineLocal(self._config)
+        self._stt_engine: STTEngine = STTEngine(self._config)
 
         self._wake_word_model: OpenWakeWordModel | None = None
         self._wake_word_config: dict[str, dict[str, str]] = {}
@@ -341,6 +341,7 @@ class VoiceClient:
                     # TODO: raise event to notify UI
                     self.stop_recording(cancel=True)
                     self._submit_bg(self._process_immediate_wake_activation, wake_word)
+                    return
 
                 self.start_recording(confirmed=True)
         except Exception as e:

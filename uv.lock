@@ -565,9 +565,9 @@ source = { editable = "." }
 dependencies = [
     { name = "audioop-lts", marker = "sys_platform == 'win32'" },
     { name = "en-core-web-sm", marker = "sys_platform == 'win32'" },
-    { name = "huggingface-hub", extra = ["hf-xet"], marker = "sys_platform == 'win32'" },
     { name = "kokoro", marker = "sys_platform == 'win32'" },
     { name = "omegaconf", marker = "sys_platform == 'win32'" },
+    { name = "openai", marker = "sys_platform == 'win32'" },
     { name = "openwakeword", marker = "sys_platform == 'win32'" },
     { name = "pip", marker = "sys_platform == 'win32'" },
     { name = "pyaudio", marker = "sys_platform == 'win32'" },
@@ -577,7 +577,6 @@ dependencies = [
     { name = "silero-vad", marker = "sys_platform == 'win32'" },
     { name = "torch", marker = "sys_platform == 'win32'" },
     { name = "torchaudio", marker = "sys_platform == 'win32'" },
-    { name = "transformers", marker = "sys_platform == 'win32'" },
 ]
 
 [package.optional-dependencies]
@@ -591,9 +590,9 @@ dev = [
 requires-dist = [
     { name = "audioop-lts", specifier = ">=0.2.2" },
     { name = "en-core-web-sm", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" },
-    { name = "huggingface-hub", extras = ["hf-xet"], specifier = ">=0.34.4" },
     { name = "kokoro", specifier = ">=0.9.4" },
     { name = "omegaconf", specifier = ">=2.3.0" },
+    { name = "openai", specifier = ">=1.100.2" },
     { name = "openwakeword", specifier = ">=0.6.0" },
     { name = "pip", specifier = ">=25.2" },
     { name = "pyaudio", specifier = ">=0.2.14" },
@@ -605,7 +604,6 @@ requires-dist = [
     { name = "silero-vad", specifier = ">=5.1.2" },
     { name = "torch", specifier = ">=2.8.0" },
     { name = "torchaudio", specifier = ">=2.8.0" },
-    { name = "transformers", specifier = ">=4.55.3" },
     { name = "types-pyaudio", marker = "extra == 'dev'", specifier = ">=0.2.14" },
 ]
 provides-extras = ["dev"]
@@ -667,9 +665,6 @@ wheels = [
 ]
 
 [package.optional-dependencies]
-hf-xet = [
-    { name = "hf-xet", marker = "sys_platform == 'win32'" },
-]
 inference = [
     { name = "aiohttp", marker = "sys_platform == 'win32'" },
 ]
