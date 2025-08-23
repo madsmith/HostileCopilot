@@ -11,7 +11,15 @@ from hostile_copilot.config import OmegaConfig
 
 logger = logging.getLogger(__name__)
 
-class STTEngineLocal:
+from .engine import STTEngine
+
+class STTEngineLocal(STTEngine):
+    """
+    Local STT engine using OpenAI Whisper.  This will require transformers and probably 
+    huggingface-hub[hf-xet] installed to run properly.  Without CUDA accelleration this
+    was hitting the CPU so it's disabled by default but the loader will still attempt to
+    load it if config is specified for it to do so.
+    """
     def __init__(self, config: OmegaConfig):
         self._config: OmegaConfig = config
         self._device: torch.device | None = None
@@ -53,11 +61,11 @@ class STTEngineLocal:
         assert self._device is not None, "Failed to initialize device for STT engine"
 
         try:
-            processor_model_id: str = self._config.get("stt.processor.model_id") or self._config.get("stt.model_id")
-            generator_model_id: str = self._config.get("stt.generator.model_id") or self._config.get("stt.model_id")
+            processor_model_id: str = self._config.get("stt-local.processor.model_id") or self._config.get("stt-local.model_id")
+            generator_model_id: str = self._config.get("stt-local.generator.model_id") or self._config.get("stt-local.model_id")
 
-            assert processor_model_id is not None, "Missing config 'stt.model_id or stt.processor.model_id'"
-            assert generator_model_id is not None, "Missing config 'stt.model_id or stt.generator.model_id'"
+            assert processor_model_id is not None, "Missing config 'stt-local.model_id or stt-local.processor.model_id'"
+            assert generator_model_id is not None, "Missing config 'stt-local.model_id or stt-local.generator.model_id'"
 
             model = None
 

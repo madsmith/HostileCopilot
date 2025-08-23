@@ -9,8 +9,8 @@ from typing import Callable, Awaitable, Union
 
 from hostile_copilot.audio import AudioDevice, AudioBuffer, AudioData, numpy_to_tensor, load_wave_file, load_mp3_file
 from hostile_copilot.config import OmegaConfig
-from hostile_copilot.tts.engine import TTSEngine
-from hostile_copilot.stt.engine import STTEngine
+from hostile_copilot.tts import TTSEngineLoader, TTSEngine
+from hostile_copilot.stt import STTEngineLoader, STTEngine
 from hostile_copilot.utils.logging import get_trace_logger
 
 from .recording_state import RecordingState, RecState, RecEvent
@@ -24,11 +24,9 @@ class VoiceClient:
         self._config = config
         self._audio_device = audio_device
 
-        model_id = self._config.get("tts.model_id")
-        voices = self._config.get("tts.voices")
-        self._tts_engine: TTSEngine = TTSEngine(model_id, voices)
+        self._tts_engine: TTSEngine = TTSEngineLoader(config).load()
 
-        self._stt_engine: STTEngine = STTEngine(self._config)
+        self._stt_engine: STTEngine = STTEngineLoader(config).load()
 
         self._wake_word_model: OpenWakeWordModel | None = None
         self._wake_word_config: dict[str, dict[str, str]] = {}

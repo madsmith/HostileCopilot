@@ -7,6 +7,20 @@ uexcorp:
 
 # Text-to-Speech settings
 tts:
+  engine: "openai"
+
+tts-openai:
+  model_id: "gpt-4o-mini-tts"
+  voice: "nova"
+  instructions: |
+    Tone: Tactical, clipped, and efficient—designed for rapid decision-making in high-stress or time-sensitive environments.
+    Affect / Personality: Coldly competent. Speaks like a focused mission operator or shipboard AI in a sci-fi setting. No small talk, no warmth—just data and recommendations.
+    Pacing: Fast and concise, no hesitation or filler. Speak as if every second counts.
+    Emotion: Minimal. Prioritize urgency and clarity over empathy. Sound detached, but never robotic—like a human trained for precision.
+    Pronunciation: Clear enunciation with subtle futuristic military tone. Use clean emphasis on key terms like "a.U.E.C." “volatile,” “profitable,” “inert,” “hostile,” “payload,” and commodity names. Avoid contractions to maintain clarity.
+    Delivery Style: Designed for spoken comms. No pleasantries, no roleplay. The voice should feel like a tool, not a character. Final words in each sentence should taper off quickly for rapid sequencing of updates.
+
+tts-local:
   # Default public Kokoro model repo id. Override here if you want another model
   model_id: "hexgrad/Kokoro-82M"
   # Optionally preload voices. Examples: ["af_sky", "af_sky,af_heart"]
@@ -14,6 +28,12 @@ tts:
   voices: ["af_sky,af_heart"]
 
 stt:
+  engine: "openai"
+
+stt-local:
+  model_id: "openai/whisper-large-v3-turbo"
+
+stt-openai:
   model_id: "gpt-4o-mini-transcribe"
   prompt: "You are Mining Logger, please transcribe the question asked by the user to you."
 
