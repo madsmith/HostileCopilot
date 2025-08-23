@@ -32,6 +32,9 @@ dependencies = [
     "pydub>=0.25.1",
     "audioop-lts>=0.2.2",
     "openai>=1.100.2",
+    "pyautogui>=0.9.54",
+    "pillow>=11.3.0",
+    "opencv-python>=4.12.0.88",
 ]
 
 [project.optional-dependencies]

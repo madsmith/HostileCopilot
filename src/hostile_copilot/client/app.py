@@ -6,8 +6,8 @@ from hostile_copilot.config import OmegaConfig
 from hostile_copilot.tts.engine import TTSEngine
 from hostile_copilot.audio import AudioDevice, load_wave_file, save_wave_file
 
-
 from .voice import VoiceClient
+from .tasks import Task, GetScreenBoundingBoxTask
 
 logger = logging.getLogger(__name__)
 
@@ -87,5 +87,9 @@ class HostileCoPilotApp:
     def _on_prompt(self, prompt: str):
         print(f"Prompt: {prompt}")
 
-    def _on_immediate_activation(self, wake_word: str):
-        print(f"Immediate activation: {wake_word}")
+    async def _on_immediate_activation(self, wake_word: str):
+        logger.info(f"Immediate activation: {wake_word}")
+        if wake_word == "scan_this":
+            task = GetScreenBoundingBoxTask(self._config)
+            await task.run()
+            print(f"Calibrated screen: {task._start} to {task._end}")
