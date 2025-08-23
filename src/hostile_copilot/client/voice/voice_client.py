@@ -236,7 +236,6 @@ class VoiceClient:
             self.stop_recording()
         else:
             logger.debug(f"Wake word {wake_word} confirmed")
-            print(self._confirmation_audios.keys())
             confirmation_audio = self._confirmation_audios.get(wake_word)
             if confirmation_audio:
                 self._audio_device.play(confirmation_audio)
