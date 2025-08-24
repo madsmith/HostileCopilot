@@ -17,7 +17,8 @@ from .recording_state import RecordingState, RecState, RecEvent
 
 logger = get_trace_logger(__name__)
 
-CallbackT = Callable[[str], Union[None, Awaitable[None]]]
+ActivationCallbackT = Callable[[str], Union[None, Awaitable[None]]]
+PromptCallbackT = Callable[[str, str], Union[str, Awaitable[str]]]
 
 class VoiceClient:
     def __init__(self, config: OmegaConfig, audio_device: AudioDevice):
@@ -36,8 +37,8 @@ class VoiceClient:
         self._vad_model: OnnxWrapper | None = None
         # self._whisper_engine: AudioInferenceEngine | None = None
 
-        self._prompt_callback: CallbackT | None = None
-        self._immediate_activation_callback: CallbackT | None = None
+        self._prompt_callback: PromptCallbackT | None = None
+        self._immediate_activation_callback: ActivationCallbackT | None = None
 
         # parameters for audio processing
         self._vad_chunk_frame_count = 512
@@ -50,6 +51,7 @@ class VoiceClient:
 
         self._silence_duration: float = 0.0
         self._recording_state: RecordingState = RecordingState()
+        self._active_wake_word: str | None = None
 
         self._confirmation_audios: dict[str, str] = {}
         self._audio_resources: dict[str, bytes] = {}
@@ -165,17 +167,20 @@ class VoiceClient:
             self._bg_executor = None
         self._bg_futures.clear()
 
-    def start_recording(self, confirmed=False):
+    def start_recording(self, confirmed=False, wake_word: str | None = None):
         """
         Begin recording audio for processing.
         
         Args:
             confirmed (bool): The audio is a confirmed activation and doesn't need confirmation that the speaker
             is engaging with the voice client.
+            wake_word (str | None): The wake word that was detected or forced. Only used for confirmed activations.
         """
         logger.debug("Recording started")
         self._recording_state.start()
         if confirmed:
+            if wake_word:
+                self._active_wake_word = wake_word
             self._recording_state.confirm()
 
     def stop_recording(self, cancel=False):
@@ -209,12 +214,12 @@ class VoiceClient:
                 logger.warning("No audio data to process")
                 return
         
-            self._submit_bg(self._process_recording_async, audio_data)
+            self._submit_bg(self._process_recording_async, self._active_wake_word, audio_data)
     
-    def on_prompt(self, callback: CallbackT):
+    def on_prompt(self, callback: PromptCallbackT):
         self._prompt_callback = callback
             
-    def on_immediate_activation(self, callback: CallbackT):
+    def on_immediate_activation(self, callback: ActivationCallbackT):
         self._immediate_activation_callback = callback
     
     async def speak(self, text: str):
@@ -302,28 +307,25 @@ class VoiceClient:
         # Return True if confirmed, False otherwise
         return True
 
-    def _process_recording_async(self, audio_data: AudioData) -> None:
+    def _process_recording_async(self, wake_word: str, audio_data: AudioData) -> None:
         assert isinstance(audio_data, AudioData), f"Expected AudioData, got {type(audio_data)}"
-        print("He we heard some audio!!")
 
-        import time
-        start = time.time()
+        if wake_word is None:
+            logger.warning("Wake word was lost during recording")
+
         try:
             text = self._stt_engine.infer(audio_data)
         except Exception as e:
             logger.exception(f"STT inference failed: {e}")
             return
-        end = time.time()
-        print("Text: " + text)
-        print("Time: " + str(end - start))
 
         if self._prompt_callback:
             try:
                 if asyncio.iscoroutinefunction(self._prompt_callback):
-                    fut = asyncio.run_coroutine_threadsafe(self._prompt_callback(text), self._loop)
+                    fut = asyncio.run_coroutine_threadsafe(self._prompt_callback(wake_word, text), self._loop)
                     fut.result()
                 else:
-                    self._prompt_callback(text)
+                    self._prompt_callback(wake_word, text)
             except Exception as e:
                 logger.exception(f"Prompt callback failed: {e}")
 
@@ -361,6 +363,7 @@ class VoiceClient:
                 on_done=lambda f, w=word: self._confirm_done(f, w),
             )
             scheduled = True
+            self._active_wake_word = word
 
         if scheduled:
             # Begin recording immediately while confirmation runs
@@ -372,9 +375,11 @@ class VoiceClient:
         
             if not confirmed:
                 logger.debug(f"Wake word {wake_word} not confirmed")
+                self._active_wake_word = None
                 self.stop_recording()
             else:
                 logger.debug(f"Wake word {wake_word} confirmed")
+                self._active_wake_word = wake_word
                 resource_name = self._confirmation_audios.get(wake_word)
                 if resource_name:
                     assert resource_name in self._audio_resources, f"Missing audio resource: {resource_name}"
