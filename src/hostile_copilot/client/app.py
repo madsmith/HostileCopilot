@@ -11,14 +11,18 @@ import pyaudio
 from hostile_copilot.config import OmegaConfig, load_config
 from hostile_copilot.audio import AudioDevice
 from hostile_copilot.utils.input.keyboard import Keyboard
+from hostile_copilot.client.uexcorp import UEXCorpClient
+from hostile_copilot.mining_logger import MiningLogger
 
+from .commodity_grader import CommodityGrader
 from .voice import VoiceClient
 from .tasks import (
     Task,
     GetScreenBoundingBoxTask,
     GetScreenLocationTask,
     MacroTask,
-    MiningScanTask
+    MiningScanTask,
+    MiningScanGraderTask
 )
 
 logger = logging.getLogger(__name__)
@@ -45,9 +49,15 @@ class HostileCoPilotApp:
         self._voice_client: VoiceClient = VoiceClient(self._config, self._audio_device)
         self._voice_task: asyncio.Task | None = None
 
+        self._uexcorp_client: UEXCorpClient = UEXCorpClient(self._config)
+
+        self._mining_logger: MiningLogger = MiningLogger(self._config)
+        self._commodity_grader: CommodityGrader = CommodityGrader(self._config)
+
         self._keyboard = Keyboard()
 
         self._agent: Agent | None = None
+        self._calibration_agent: Agent | None = None
 
         self._is_running: bool = False
 
@@ -60,18 +70,24 @@ class HostileCoPilotApp:
         logger.info("Initializing VoiceClient...")
         await self._voice_client.initialize()
 
+        logger.info("Initializing MiningLogger...")
+        self._mining_logger.initialize()
+
+        logger.info("Initializing CommodityGrader...")
+        await self._commodity_grader.initialize(self._uexcorp_client)
+
         logger.info("Initializing Keyboard...")
         await self._keyboard.start()
 
         logger.info("Initializing Agent...")
-        await self.initialize_agent()
+        await self.initialize_agents()
 
         self._voice_client.on_prompt(self._on_prompt)
         self._voice_client.on_immediate_activation(self._on_immediate_activation)
 
         self._audio_device.start()
 
-    async def initialize_agent(self):
+    async def initialize_agents(self):
         api_key = self._config.get("agent.api_key", "")
         base_url = self._config.get("agent.base_url", None)
         provider = OpenAIProvider(api_key=api_key, base_url=base_url)
@@ -86,6 +102,7 @@ class HostileCoPilotApp:
         # Tool registration
         toolset = FunctionToolset(tools=[
             self._tool_perform_test,
+            self._tool_perform_scan,
         ])
 
         calibration_toolset = FunctionToolset(tools=[
@@ -94,13 +111,18 @@ class HostileCoPilotApp:
             self._tool_setup_nav_search_calibration,
         ])
 
-        agent = Agent(
+        # TODO: do we support agents from multiple models/providers?
+        self._agent = Agent(
             model=model,
             system_prompt=system_prompt,
-            toolsets=[toolset, calibration_toolset],
-
+            toolsets=[toolset],
         )
-        self._agent = agent
+
+        self._calibration_agent = Agent(
+            model=model,
+            system_prompt=system_prompt,
+            toolsets=[calibration_toolset],
+        )
     
     async def run(self):
         self._is_running = True
@@ -121,28 +143,36 @@ class HostileCoPilotApp:
             except KeyboardInterrupt:
                 self._is_running = False
 
-
         if self._voice_task is not None:
             await self._voice_task
 
+        self._mining_logger.shutdown()
+
         await self._keyboard.stop()
 
-    async def _on_prompt(self, prompt: str):
+    async def _on_prompt(self, wake_word: str, prompt: str):
         assert self._agent is not None
-        print(f"Prompt: {prompt}")
+        if wake_word == "mining_logger":
+            print(f"Prompt: {prompt}")
 
-        response = await self._agent.run(prompt)
+            response = await self._agent.run(prompt)
 
-        response_text = response.output
-        print(f"Response: {response_text}")
+            response_text = response.output
+            print(f"Response: {response_text}")
+        elif wake_word == "calibrate_system":
+            print(f"Prompt: {prompt}")
+
+            response = await self._calibration_agent.run(prompt)
+
+            response_text = response.output
+            print(f"Response: {response_text}")
 
         await self._voice_client.speak(response_text)
 
     async def _on_immediate_activation(self, wake_word: str):
         logger.info(f"Immediate activation: {wake_word}")
         if wake_word == "scan_this":
-            task = MiningScanTask(self._config, self._app_config)
-            await task.run()
+            await self._tool_perform_scan()
             
             # location = (3186, 426)
             
@@ -169,6 +199,29 @@ class HostileCoPilotApp:
         """
         print("Performing test")
         await self._voice_client.speak("Test")
+
+    async def _tool_perform_scan(self):
+        """
+        Perform a scan
+        """
+        task = MiningScanTask(self._config, self._app_config)
+        await task.run()
+
+        scan_result = task.scan_result
+        if scan_result is None:
+            await self._voice_client.speak("No scan data found")
+            return
+
+        self._mining_logger.log(scan_result)
+
+        grade_task = MiningScanGraderTask(
+            self._config,
+            self._app_config,
+            scan_result,
+            self._voice_client,
+            self._commodity_grader
+        )
+        await grade_task.run()
 
     async def _tool_setup_mining_calibration(self):
         """
@@ -224,6 +277,7 @@ class HostileCoPilotApp:
         if "calibration.nav_search" not in self._app_config:
             self._app_config.set("calibration.nav_search", {})
         
-        self._app_config.set("calibration.nav_search.location", location)
+        self._app_config.set("calibration.nav_search.location.x", location.x)
+        self._app_config.set("calibration.nav_search.location.y", location.y)
 
         omegaconf.OmegaConf.save(self._app_config._config, self._app_config_path)

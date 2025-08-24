@@ -4,6 +4,7 @@ from .screen_bounding_box import GetScreenBoundingBoxTask
 from .screen_get_location import GetScreenLocationTask
 from .macro import MacroTask
 from .extract_scan import MiningScanTask
+from .mining_scan_grader import MiningScanGraderTask
 
 __all__ = [
     "Task",
@@ -11,5 +12,6 @@ __all__ = [
     "GetScreenBoundingBoxTask",
     "GetScreenLocationTask",
     "MacroTask",
-    "MiningScanTask"
+    "MiningScanTask",
+    "MiningScanGraderTask"
 ]

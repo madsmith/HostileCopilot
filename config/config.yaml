@@ -10,6 +10,19 @@ app:
   screenshots:
     debug: true
     path: "screenshots"
+  scanning:
+    notify_levels:
+      value: 500000
+      tier: 3
+      single_item_value: 300000
+
+    notify_tier: 3
+
+mining_logger:
+  database_file: "mining_logger.db"
+
+refineable_mapping:
+  "Cobalt (Ore)": "Cobalt"
 
 agent:
   api_key: "${openai.api_key}"

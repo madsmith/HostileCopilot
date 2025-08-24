@@ -36,3 +36,9 @@ notes.md
 resources/stereo_test_resampled.wav
 mypy.ini
 config/settings.yaml
+.logfire/logfire_credentials.json
+commodity.json
+
+# Runtime debug files
+screenshot.png
+cropped_image.png

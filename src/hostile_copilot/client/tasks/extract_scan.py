@@ -19,6 +19,10 @@ class MiningScanTask(Task):
 
         self._scan_result: ScanResponse | None = None
 
+    @property
+    def scan_result(self) -> ScanResponse | None:
+        return self._scan_result
+
     async def run(self):
         self._scan_result = None
 
