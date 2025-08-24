@@ -7,7 +7,10 @@ uexcorp:
 
 app:
   config: "config/settings.yaml"
-  
+  screenshots:
+    debug: true
+    path: "screenshots"
+
 agent:
   api_key: "${openai.api_key}"
   model_id: "gpt-4o-mini"
@@ -20,6 +23,27 @@ agent:
     Legality is irrelevant. If a commodity isn’t found, assume a transcription error and find the closest matching known commodity.
     Ignore unnecessary detail. Give actionable info fast. Use in-game terminology only when it improves clarity.
 
+mining_scan_agent:
+  api_key: "${openai.api_key}"
+  model_id: "gpt-4o-mini"
+  system_prompt: |
+    You are a text extraction AI.  
+    Your job is to extract asteroid/rock scan data from images.  
+    
+    ### Rules
+    - Always return **valid JSON** strictly matching the schema. 
+    - If the image contains **valid scan data**, return:
+      {
+        "scan_data": { ... all ScanData fields ... }
+      }
+    - If the image does **NOT** contain scan data (e.g. random screen, blank, wrong UI),
+      return:
+      {
+        "scan_data": null
+      }
+    - If difficulty is missing in the scan, return "Unknown". 
+    - Difficulty must be one of: Easy, Medium, Hard, Impossible, Unknown.
+    
 
 # Text-to-Speech settings
 tts:
@@ -72,3 +96,9 @@ openwakeword:
       path: "./resources/models/analyze_ping.onnx"
       confirmation_audio: "./resources/audio/scan.mp3"
       suppress_follow_up: true
+    - name: "copilot"
+      path: "./resources/models/copilot.onnx"
+      confirmation_audio: "./resources/audio/activation.wav"
+    - name: "calibrate_system"
+      path: "./resources/models/calibrate_system.onnx"
+      confirmation_audio: "./resources/audio/activation.wav"

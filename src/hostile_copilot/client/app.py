@@ -17,7 +17,8 @@ from .tasks import (
     Task,
     GetScreenBoundingBoxTask,
     GetScreenLocationTask,
-    MacroTask
+    MacroTask,
+    MiningScanTask
 )
 
 logger = logging.getLogger(__name__)
@@ -140,16 +141,19 @@ class HostileCoPilotApp:
     async def _on_immediate_activation(self, wake_word: str):
         logger.info(f"Immediate activation: {wake_word}")
         if wake_word == "scan_this":
-            location = (3186, 426)
-            
-            task = MacroTask(self._config, self._keyboard)
-            task.set_macro([
-                ("sleep", 2),
-                ("click", location),
-                ("vkbd:press", "f2"),
-                ("vkbd:sequence", list("hello"), {"interkey_delay": 0.02}),
-            ])
+            task = MiningScanTask(self._config, self._app_config)
             await task.run()
+            
+            # location = (3186, 426)
+            
+            # task = MacroTask(self._config, self._keyboard)
+            # task.set_macro([
+            #     ("sleep", 2),
+            #     ("click", location),
+            #     ("vkbd:press", "f2"),
+            #     ("vkbd:sequence", list("hello"), {"interkey_delay": 0.02}),
+            # ])
+            # await task.run()
             
             # task = GetScreenLocationTask(self._config)
             # await task.run()
