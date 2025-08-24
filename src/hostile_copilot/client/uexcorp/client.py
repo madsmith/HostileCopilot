@@ -70,5 +70,5 @@ class UEXCorpClient:
         
         return (time.time() - cache_path.stat().st_mtime) > self._cache_expiry
 
-    async def fetch_commodities(self):
+    async def fetch_commodities(self) -> list[dict[str, Any]]:
         return await self.api_call_cached("commodities")
