@@ -8,6 +8,7 @@ This module provides the command-line interface for the HostileCoPilot applicati
 import asyncio
 import argparse
 import logging
+import logfire
 
 from hostile_copilot.client.app import HostileCoPilotApp
 from hostile_copilot.config import load_config
@@ -58,6 +59,16 @@ def main() -> None:
         logging.getLogger().setLevel(logging.DEBUG)
     else:
         suppress_warnings()
+
+        
+    logfire_instance = logfire.configure(
+        service_name="hostile_copilot",
+        environment="development",
+        console=False
+    )
+
+    logfire_instance.instrument_pydantic_ai()
+    logfire_instance.instrument_requests()
     
     asyncio.run(run_app(args))
 
