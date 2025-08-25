@@ -38,7 +38,6 @@ class VoiceClient:
         self._default_activation_count = self._config.get("openwakeword.default_activation_count", 2)
 
         self._vad_model: OnnxWrapper | None = None
-        # self._whisper_engine: AudioInferenceEngine | None = None
 
         self._prompt_callback: PromptCallbackT | None = None
         self._immediate_activation_callback: ActivationCallbackT | None = None
@@ -228,7 +227,9 @@ class VoiceClient:
     
     async def speak(self, text: str):
         try:
+            logger.debug(f"Speaking: {text}")
             audio = await self._tts_engine.infer(text)
+            logger.debug(f"Audio length: {len(audio)}")
             self._audio_device.play(audio)
         except Exception as e:
             logger.exception(f"TTS inference failed: {e}")
