@@ -29,6 +29,7 @@ class CommodityGrader:
         self._config = config
         self._commodities: list[dict[str, Any]] = []
         self._tier_map: dict[str, int] = {}
+        self._tier_predictor: KMeans | None = None
 
 
     async def initialize(self, uexcorp_client: UEXCorpClient):
@@ -42,11 +43,14 @@ class CommodityGrader:
             commodity_grades=[]
         )
 
+        total_value = 0
         for scan_item in scan_data.composition:
             tier = self.get_tier(scan_item.material)
             price = self._get_price(scan_item.material)
             size = round(scan_item.percentage * scan_data.size, 1)
             value = round(price * size / 100)
+
+            total_value += value
 
             scan_grade.commodity_grades.append(
                 CommodityGrade(
@@ -58,14 +62,23 @@ class CommodityGrader:
                 )
             )
 
-        scan_grade.total_value = round(sum(scan_grade.commodity_grades, key=lambda x: x.value))
-        scan_grade.best_tier = min(scan_grade.commodity_grades, key=lambda x: x.tier)
+        scan_grade.total_value = round(total_value)
+        scan_grade.best_tier = min(scan_grade.commodity_grades, key=lambda x: x.tier).tier
 
         return scan_grade
             
 
     def get_tier(self, commodity: str) -> int:
-        return self._tier_map.get(commodity, 0)
+        assert self._tier_predictor is not None, "Tier predictor is not initialized"
+
+        # Get price of commodity
+        price = self._get_price(commodity)
+
+        data = np.array([[price]])
+        prediction = self._tier_predictor.predict(data)
+
+        tier_label = self._tier_map.get(prediction[0], 0)
+        return tier_label
     
     def refineable_to_refined(self, name: str) -> str | None:
         mapping = self._config.get("refineable_mapping", {})
@@ -88,7 +101,10 @@ class CommodityGrader:
         # Filter refined commodities
         refined_commodities = [commodity for commodity in self._commodities if commodity["is_refined"]]
 
-        prices = np.array([int(commodity["price_sell"]) for commodity in refined_commodities])
+        prices = np.array([
+            [int(commodity["price_sell"]),]
+            for commodity in refined_commodities
+        ])
 
         clusters = kmeans.fit_predict(prices)
 
@@ -98,6 +114,9 @@ class CommodityGrader:
 
         # Assign tiers to cluster labels
         self._tier_map = {cluster_labels[i]: i + 1 for i in range(tier_count)}
+        self._tier_predictor = kmeans
+
+    
 
     def _get_price(self, commodity: str) -> int:
         refined_commodity = self.refineable_to_refined(commodity)
