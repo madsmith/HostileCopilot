@@ -152,22 +152,20 @@ class HostileCoPilotApp:
 
     async def _on_prompt(self, wake_word: str, prompt: str):
         assert self._agent is not None
+        response_text = None
         if wake_word == "mining_logger":
-            print(f"Prompt: {prompt}")
-
             response = await self._agent.run(prompt)
 
             response_text = response.output
-            print(f"Response: {response_text}")
         elif wake_word == "calibrate_system":
-            print(f"Prompt: {prompt}")
-
             response = await self._calibration_agent.run(prompt)
 
             response_text = response.output
-            print(f"Response: {response_text}")
 
-        await self._voice_client.speak(response_text)
+        if response_text is not None:
+            print(f"Prompt: {prompt}")
+            print(f"Response: {response_text}")
+            await self._voice_client.speak(response_text)
 
     async def _on_immediate_activation(self, wake_word: str):
         logger.info(f"Immediate activation: {wake_word}")
