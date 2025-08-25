@@ -50,8 +50,6 @@ class MiningScanTask(Task):
 
         response = await self._agent.run(prompt)
         data = response.output
-        print(type(data))
-        print(data.model_dump_json(indent=2))
 
         self._scan_result = data
 
