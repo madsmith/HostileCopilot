@@ -1,4 +1,5 @@
 import asyncio
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, Future
 import numpy as np
 import openwakeword
@@ -34,6 +35,8 @@ class VoiceClient:
         for model in self._config.get("openwakeword.models"):
             self._wake_word_config[model.get("name")] = model
 
+        self._default_activation_count = self._config.get("openwakeword.default_activation_count", 2)
+
         self._vad_model: OnnxWrapper | None = None
         # self._whisper_engine: AudioInferenceEngine | None = None
 
@@ -52,6 +55,7 @@ class VoiceClient:
         self._silence_duration: float = 0.0
         self._recording_state: RecordingState = RecordingState()
         self._active_wake_word: str | None = None
+        self._wake_word_activation_counts: defaultdict[str, int] = defaultdict(int)
 
         self._confirmation_audios: dict[str, str] = {}
         self._audio_resources: dict[str, bytes] = {}
@@ -292,6 +296,7 @@ class VoiceClient:
 
             # Discard frames if we are already recording
             if self._recording_state.is_recording():
+                self._wake_word_activation_counts = defaultdict(int)
                 return
 
             # openwakeword expects numpy array
@@ -299,11 +304,22 @@ class VoiceClient:
 
             detection: dict[str, float] = self._wake_word_model.predict(np_audio) # type: ignore
 
-            if any(value > activation_threshold for value in detection.values()):
-                detected_wake_words = [key for key, value in detection.items() if value > activation_threshold]
-                logger.info(f"Wake word detected! {detected_wake_words}")
+            # Score each wake word and set activation counts
+            activated_wake_words = []
+            for wake_word, value in detection.items():
+                if value > activation_threshold:
+                    self._wake_word_activation_counts[wake_word] += 1
+                    logger.debug(f"Wake word {wake_word} activated {self._wake_word_activation_counts[wake_word]} times")
+                    activation_count = self._wake_word_config[wake_word].get("activation_count", self._default_activation_count)
+                    if self._wake_word_activation_counts[wake_word] >= activation_count:
+                        activated_wake_words.append(wake_word)
+                else:
+                    self._wake_word_activation_counts[wake_word] = 0
+
+            if activated_wake_words:
+                logger.info(f"Wake word detected! {activated_wake_words}")
                 self._wake_word_model.reset()
-                self._on_wake_words_detected(detected_wake_words)
+                self._on_wake_words_detected(activated_wake_words)
 
     def _confirm_wake_word_sync(self, wake_word: str, audio_data: AudioData) -> bool:
         assert isinstance(audio_data, AudioData), f"Expected AudioData, got {type(audio_data)}"
