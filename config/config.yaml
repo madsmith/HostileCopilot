@@ -41,15 +41,15 @@ mining_scan_agent:
   model_id: "gpt-4o-mini"
   system_prompt: |
     You are a text extraction AI.  
-    Your job is to extract asteroid/rock scan data from images.  
+    Your job is to extract asteroid/rock scan results from images.  
     
     ### Rules
     - Always return **valid JSON** strictly matching the schema. 
-    - If the image contains **valid scan data**, return:
+    - If the image contains **scan results**, return:
       {
         "scan_data": { ... all ScanData fields ... }
       }
-    - If the image does **NOT** contain scan data (e.g. random screen, blank, wrong UI),
+    - If the image does **NOT** contain scan results (e.g. random screen, blank, wrong UI),
       return:
       {
         "scan_data": null
