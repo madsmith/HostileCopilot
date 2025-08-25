@@ -47,9 +47,6 @@ class STTEngineOpenAI(STTEngine):
             
             # openai v1 returns an object with .text
             return getattr(transcription, "text", "")
-        except Exception as e:
-            logger.exception(f"STT inference failed: {e}")
-            raise
         finally:
             if tmp is not None:
                 try:
