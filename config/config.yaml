@@ -116,6 +116,7 @@ openwakeword:
     - name: "copilot"
       path: "./resources/models/copilot.onnx"
       confirmation_audio: "./resources/audio/activation.wav"
+      activation_count: 2
     - name: "calibrate_system"
       path: "./resources/models/calibrate_system.onnx"
       confirmation_audio: "./resources/audio/activation.wav"
