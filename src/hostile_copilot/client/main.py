@@ -16,6 +16,9 @@ from hostile_copilot.utils.debug.tracemalloc import start_tracemalloc, dump_trac
 from hostile_copilot.utils.debug.objects import dump_object_summary_every
 from hostile_copilot.utils.debug.counts import dump_counts_every
 from hostile_copilot.utils.debug.objects import dump_gc_objects_every
+from hostile_copilot.utils.logging import get_trace_logger
+
+logger = get_trace_logger(__name__)
 
 async def run_app(args: argparse.Namespace) -> None:
     # start_tracemalloc()
@@ -46,6 +49,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--version", action="version", version="HostileCoPilot 0.1.0")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose output")
+    parser.add_argument("--trace", "-t", action="store_true", help="Enable tracing")
     parser.add_argument("--config", "-c", help="Path to configuration file")
     
     args = parser.parse_args()
@@ -60,7 +64,9 @@ def main() -> None:
     else:
         suppress_warnings()
 
-        
+    if args.trace:
+        logging.getLogger().setLevel("TRACE")
+
     logfire_instance = logfire.configure(
         service_name="hostile_copilot",
         environment="development",
