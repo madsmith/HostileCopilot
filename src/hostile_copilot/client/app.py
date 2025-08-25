@@ -208,11 +208,11 @@ class HostileCoPilotApp:
         await task.run()
 
         scan_result = task.scan_result
-        if scan_result is None:
+        if scan_result is None or scan_result.scan_data is None:
             await self._voice_client.speak("No scan data found")
             return
 
-        self._mining_logger.log(scan_result)
+        self._mining_logger.log(scan_result.scan_data)
 
         grade_task = MiningScanGraderTask(
             self._config,

@@ -39,6 +39,11 @@ config/settings.yaml
 .logfire/logfire_credentials.json
 commodity.json
 
+#Runtime data
+mining_logger.db
+cache/
+
 # Runtime debug files
 screenshot.png
 cropped_image.png
+cache/*

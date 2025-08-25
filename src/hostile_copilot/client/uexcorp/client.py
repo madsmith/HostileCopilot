@@ -2,6 +2,8 @@ import json
 import logging
 from pathlib import Path
 import requests
+from typing import Any
+import time
 
 from hostile_copilot.config import OmegaConfig
 
@@ -21,7 +23,7 @@ class UEXCorpClient:
         assert self._bearer_token is not None, "Missing config 'uexcorp.bearer_token'"
 
     async def api_call(self, endpoint: str, method: str = "GET", data: dict | None = None):
-        url = "https://api.uexcorp.com/2.0/" + endpoint
+        url = "https://api.uexcorp.space/2.0/" + endpoint
         headers = {
             "Authorization": f"Bearer {self._bearer_token}",
             "Content-Type": "application/json",
@@ -41,28 +43,43 @@ class UEXCorpClient:
             return response.json()
         except ValueError:
             raise UEXCorpException(f"Request failed with status code {response.status_code}")
-        
-        return response
     
     async def api_call_cached(self, endpoint: str, method: str = "GET", data: dict | None = None):
-        cache_path = self._file_cache_path / endpoint
+        cache_filename = f"{endpoint}.json"
+        cache_path = self._file_cache_path / cache_filename
         if cache_path.exists() and not await self._is_cache_stale(cache_path):
             with open(cache_path, "r") as f:
                 return json.load(f)
         
         response = await self.api_call(endpoint, method, data)
 
+        if response is None:
+            raise UEXCorpException("No response from API")
+        
+        if "http_code" not in response:
+            logger.warning(f"No http_code in response: {response}")
+            raise UEXCorpException("No http_code in response")
+        
+        if response["http_code"] != 200:
+            raise UEXCorpException(f"Request failed: {response['http_code']} - {response['messsage']}")
+
+        if "data" not in response:
+            logger.warning(f"No data in response: {response}")
+            raise UEXCorpException("No data in response")
+
+        response_data = response["data"]
+
         # ensure cache directory exists
         cache_path.parent.mkdir(parents=True, exist_ok=True)
 
         with open(cache_path, "w") as f:
             try:
-                json.dump(response, f)
+                json.dump(response_data, f, indent=2)
             except Exception as e:
                 logger.warning(f"Failed to cache response: {e}")
                 pass
         
-        return response
+        return response_data
 
     async def _is_cache_stale(self, cache_path: Path) -> bool:
         if not cache_path.exists():

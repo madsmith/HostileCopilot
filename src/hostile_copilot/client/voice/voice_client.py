@@ -223,8 +223,12 @@ class VoiceClient:
         self._immediate_activation_callback = callback
     
     async def speak(self, text: str):
-        audio = await self._tts_engine.infer(text)
-        self._audio_device.play(audio)
+        try:
+            audio = await self._tts_engine.infer(text)
+            self._audio_device.play(audio)
+        except Exception as e:
+            logger.exception(f"TTS inference failed: {e}")
+            
  
     def _process_vad(self):
         assert self._vad_model is not None, "VAD model not initialized"
@@ -313,6 +317,10 @@ class VoiceClient:
         if wake_word is None:
             logger.warning("Wake word was lost during recording")
 
+        if audio_data.duration() < self._config.get("voice.min_recording_duration", 1.0):
+            logger.debug("Audio data too short, skipping STT")
+            return
+
         try:
             text = self._stt_engine.infer(audio_data)
         except Exception as e:
@@ -345,6 +353,11 @@ class VoiceClient:
         """Schedule confirmation for detected wake words without blocking audio loop."""
         if not words:
             return
+
+        if self._speech_buffer.get_duration_ms() < self._config.get("voice.min_vad_duration", 0.5):
+            logger.debug("Audio data too short, skipping confirmation")
+            return
+        
         scheduled = False
         for word in words:
             logger.debug(f"Detected wake word: {word} VAD: {self._speech_buffer.get_duration_ms()}ms")

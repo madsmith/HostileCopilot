@@ -1,9 +1,11 @@
 import logging
 import sqlite3
 import time
+from datetime import datetime
 
-from hostile_copilot.client.tasks.types import ScanResponse, ScanData
 from hostile_copilot.config import OmegaConfig
+
+from .types import ScanData
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +59,7 @@ class MiningLogger:
         
         # Apply migrations in version order
         for version in sorted([v for v in migrations.keys() if v > current_version]):
-            self.logger.info(f"Migrating database schema to version {version}")
+            logger.info(f"Migrating database schema to version {version}")
             migrations[version](conn)
             
             # Update schema version
@@ -110,13 +112,9 @@ class MiningLogger:
     def shutdown(self):
         self._conn.close()
 
-    def log(self, scan_result: ScanResponse, location: str | None = None):
-        scan_data: ScanData | None = scan_result.scan_data
-        if scan_data is None:
-            logger.warning("No scan data to log")
-            return
-
+    def log(self, scan_data: ScanData, location: str | None = None):
         assert self._conn is not None, "Database connection is not initialized"
+        assert isinstance(scan_data, ScanData), "Scan data must be of type ScanData"
 
         cursor = self._conn.cursor()
         try:

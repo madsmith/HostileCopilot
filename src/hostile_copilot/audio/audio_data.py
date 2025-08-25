@@ -62,6 +62,7 @@ class AudioData:
         return byte_length // sample_size // self.channels
     
     def duration(self) -> float:
+        """ Return duration in seconds """
         return self.frame_count() / self.rate
 
     def end_time(self) -> float:
