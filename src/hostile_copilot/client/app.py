@@ -151,9 +151,11 @@ class HostileCoPilotApp:
         await self._keyboard.stop()
 
     async def _on_prompt(self, wake_word: str, prompt: str):
+        # TODO: maybe have prompt take in audio and app can decide to do STT
+        # or use audio as prompt inference inputs
         assert self._agent is not None
         response_text = None
-        if wake_word == "mining_logger":
+        if wake_word == "mining_logger" or wake_word == "copilot":
             response = await self._agent.run(prompt)
 
             response_text = response.output
@@ -161,6 +163,8 @@ class HostileCoPilotApp:
             response = await self._calibration_agent.run(prompt)
 
             response_text = response.output
+        else:
+            logger.warning(f"Wake word {wake_word} not recognized")
 
         if response_text is not None:
             print(f"Prompt: {prompt}")
