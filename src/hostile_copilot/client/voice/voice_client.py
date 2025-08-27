@@ -225,12 +225,15 @@ class VoiceClient:
     def on_immediate_activation(self, callback: ActivationCallbackT):
         self._immediate_activation_callback = callback
     
-    async def speak(self, text: str):
+    async def speak(self, text: str, wait_for_completion: bool = False):
         try:
             logger.debug(f"Speaking: {text}")
             audio = await self._tts_engine.infer(text)
             logger.debug(f"Audio length: {len(audio)}")
             self._audio_device.play(audio)
+            if wait_for_completion:
+                speech_completion_delay = self._config.get("voice.speech_completion_delay", 0.5)
+                await asyncio.sleep(audio.duration() + speech_completion_delay)
         except Exception as e:
             logger.exception(f"TTS inference failed: {e}")
             
