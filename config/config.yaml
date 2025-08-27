@@ -98,13 +98,13 @@ openwakeword:
       path: "./resources/models/mining_logger.onnx"
       wake_word_key: "mining_logger"
       confirmation_audio: "./resources/audio/activation.wav"
-      activation_count: 4
+      activation_count: 3
     - name: "scan_this"
       path: "./resources/models/scan_this.onnx"
       wake_word_key: "scan_this"
       confirmation_audio: "./resources/audio/scan.mp3"
       suppress_follow_up: true
-      activation_count: 4
+      activation_count: 3
     - name: "stop"
       path: "./resources/models/stop.onnx"
       suppress_follow_up: true
@@ -116,7 +116,7 @@ openwakeword:
     - name: "copilot"
       path: "./resources/models/copilot.onnx"
       confirmation_audio: "./resources/audio/activation.wav"
-      activation_count: 2
+      activation_count: 1
     - name: "calibrate_system"
       path: "./resources/models/calibrate_system.onnx"
       confirmation_audio: "./resources/audio/activation.wav"
