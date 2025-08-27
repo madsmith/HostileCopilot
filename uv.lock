@@ -590,6 +590,7 @@ name = "hostilecopilot"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "anyio", marker = "sys_platform == 'win32'" },
     { name = "audioop-lts", marker = "sys_platform == 'win32'" },
     { name = "en-core-web-sm", marker = "sys_platform == 'win32'" },
     { name = "kokoro", marker = "sys_platform == 'win32'" },
@@ -627,6 +628,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anyio", specifier = ">=4.10.0" },
     { name = "audioop-lts", specifier = ">=0.2.2" },
     { name = "en-core-web-sm", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" },
     { name = "kokoro", specifier = ">=0.9.4" },

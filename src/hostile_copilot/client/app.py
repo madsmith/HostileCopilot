@@ -1,3 +1,4 @@
+import anyio
 import asyncio
 import logging
 import omegaconf
@@ -56,7 +57,6 @@ class HostileCoPilotApp:
 
         self._mining_logger: MiningLogger = MiningLogger(self._config)
         self._commodity_grader: CommodityGrader = CommodityGrader(self._config)
-        self._current_location: str | None = None
 
         self._keyboard = Keyboard()
 
@@ -64,6 +64,11 @@ class HostileCoPilotApp:
         self._calibration_agent: Agent | None = None
 
         self._is_running: bool = False
+
+        # State
+        self._current_location: str | None = None
+        self._agent_prompt_lock: asyncio.Lock = asyncio.Lock()
+        self._agent_prompt_future: asyncio.Future | None = None
 
 
     async def initialize(self):
@@ -107,7 +112,6 @@ class HostileCoPilotApp:
 
         # Tool registration
         toolset = FunctionToolset(tools=[
-            self._tool_perform_test,
             self._tool_set_current_location,
             self._prompt_user_for_input,
             self._tool_perform_scan,
@@ -115,6 +119,7 @@ class HostileCoPilotApp:
         ])
 
         copilot_toolset = FunctionToolset(tools=[
+            self._prompt_user_for_input,
             self._tool_set_current_location,
             self._tool_set_navigation_route,
             self._tool_get_commodity_data,
@@ -188,6 +193,13 @@ class HostileCoPilotApp:
             response = await self._copilot_agent.run(prompt)
 
             response_text = response.output
+
+        elif wake_word == "agent_prompt":
+            if self._agent_prompt_future is not None and not self._agent_prompt_future.done():
+                self._agent_prompt_future.set_result(prompt)
+            else:
+                logger.warning("Received agent_prompt but no pending prompt future")
+
         else:
             logger.warning(f"Wake word {wake_word} not recognized")
 
@@ -201,14 +213,7 @@ class HostileCoPilotApp:
         if wake_word == "scan_this":
             await self._tool_perform_scan()
 
-    async def _tool_perform_test(self):
-        """
-        Perform a test
-        """
-        print("Performing test")
-        await self._voice_client.speak("Test")
-
-    async def _prompt_user_for_input(self, prompt: str) -> str:
+    async def _prompt_user_for_input(self, prompt: str) -> str | None:
         """
         Prompt the user for input
 
@@ -219,9 +224,26 @@ class HostileCoPilotApp:
             str: The user's input
         """
 
-        await self._voice_client.speak(prompt, wait_for_completion=True)
+        async with self._agent_prompt_lock:
+            await self._voice_client.speak(prompt, wait_for_completion=True)
 
-        return await self._voice_client.listen()
+            # Create a fresh future to capture the user's spoken response
+            self._agent_prompt_future = asyncio.get_event_loop().create_future()
+
+            # Start recording and route the recognized text back via wake_word == "agent_prompt"
+            self._voice_client.start_recording(confirmed=True, wake_word="agent_prompt")
+
+            try:
+                with anyio.fail_after(self._app_config.get("agent.prompt_timeout", 10)):
+                    await self._agent_prompt_future
+                response = self._agent_prompt_future.result()
+                return response
+            except TimeoutError:
+                await self._voice_client.speak("Failed trying to get response from user")
+                raise RuntimeError("Failed trying to get response from user")
+            finally:
+                # Cleanup so stray agent_prompt events don't hit a stale future
+                self._agent_prompt_future = None
 
     async def _tool_perform_scan(self) -> ScanResponse | None:
         """
@@ -229,7 +251,6 @@ class HostileCoPilotApp:
         """
         
         if self._current_location is None:
-            await self._voice_client.speak("Please specify the current location")
             return "Please specify the current location"
         
         task = MiningScanTask(self._config, self._app_config)
@@ -262,8 +283,8 @@ class HostileCoPilotApp:
         """
         
         self._current_location = location
-        print("Setting current location")
-        await self._voice_client.speak("Current location set")
+        logger.info(f"Current location set to {location}")
+        await self._voice_client.speak(f"Current location set to {location}")
 
     async def _tool_set_navigation_route(self, destination: str):
         """
