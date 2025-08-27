@@ -200,25 +200,6 @@ class HostileCoPilotApp:
         logger.info(f"Immediate activation: {wake_word}")
         if wake_word == "scan_this":
             await self._tool_perform_scan()
-            
-            # location = (3186, 426)
-            
-            # task = MacroTask(self._config, self._keyboard)
-            # task.set_macro([
-            #     ("sleep", 2),
-            #     ("click", location),
-            #     ("vkbd:press", "f2"),
-            #     ("vkbd:sequence", list("hello"), {"interkey_delay": 0.02}),
-            # ])
-            # await task.run()
-            
-            # task = GetScreenLocationTask(self._config)
-            # await task.run()
-            # print(f"Located click: {task.last_click}")
-            
-            # task = GetScreenBoundingBoxTask(self._config)
-            # await task.run()
-            # print(f"Calibrated screen: {task._start} to {task._end}")
 
     async def _tool_perform_test(self):
         """
