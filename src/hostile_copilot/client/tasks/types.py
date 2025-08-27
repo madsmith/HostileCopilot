@@ -21,3 +21,13 @@ class ScanResponse(BaseModel):
         description="The parsed scan.  If no scan data is present in the image, return null."
     )
     
+class CommodityData(BaseModel):
+    name: str
+    is_buyable: bool = Field(description="Whether the commodity can be bought in shops.")
+    buy_price: int = Field(alias="price_buy", description="The price to buy the commodity in shops")
+    is_sellable: bool = Field(description="Whether the commodity can be sold in shops.")
+    sell_price: int = Field(alias="price_sell", description="The price to sell the commodity in shops")
+    is_legal: bool = Field(description="Whether the commodity is considered legal trade.")
+    is_mineral: bool = Field(description="Whether the commodity is a mineral.")
+    is_refined: bool = Field(description="Whether the commodity is refined.")
+    is_refinable: bool = Field(description="Whether the commodity can be refined into a refined version of the commodity.")

@@ -7,6 +7,7 @@ from pydantic_ai.toolsets import FunctionToolset
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.models.openai import OpenAIModel
 import pyaudio
+from typing import Any
 
 from hostile_copilot.config import OmegaConfig, load_config
 from hostile_copilot.audio import AudioDevice
@@ -22,8 +23,10 @@ from .tasks import (
     GetScreenLocationTask,
     MacroTask,
     MiningScanTask,
-    MiningScanGraderTask
+    MiningScanGraderTask,
+    NavSetRouteTask
 )
+from .tasks.types import CommodityData, ScanResponse
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +56,7 @@ class HostileCoPilotApp:
 
         self._mining_logger: MiningLogger = MiningLogger(self._config)
         self._commodity_grader: CommodityGrader = CommodityGrader(self._config)
+        self._current_location: str | None = None
 
         self._keyboard = Keyboard()
 
@@ -60,6 +64,7 @@ class HostileCoPilotApp:
         self._calibration_agent: Agent | None = None
 
         self._is_running: bool = False
+
 
     async def initialize(self):
         logger.info("Initializing HostileCoPilotApp...")
@@ -86,6 +91,7 @@ class HostileCoPilotApp:
         self._voice_client.on_immediate_activation(self._on_immediate_activation)
 
         self._audio_device.start()
+        logger.info("HostileCoPilotApp initialized")
 
     async def initialize_agents(self):
         api_key = self._config.get("agent.api_key", "")
@@ -102,13 +108,22 @@ class HostileCoPilotApp:
         # Tool registration
         toolset = FunctionToolset(tools=[
             self._tool_perform_test,
+            self._tool_set_current_location,
+            self._prompt_user_for_input,
             self._tool_perform_scan,
+            self._tool_get_commodity_data,
+        ])
+
+        copilot_toolset = FunctionToolset(tools=[
+            self._tool_set_current_location,
+            self._tool_set_navigation_route,
+            self._tool_get_commodity_data,
         ])
 
         calibration_toolset = FunctionToolset(tools=[
             self._tool_setup_mining_calibration,
             self._tool_setup_ping_scan_calibration,
-            self._tool_setup_nav_search_calibration,
+            self._tool_setup_nav_route_calibration,
         ])
 
         # TODO: do we support agents from multiple models/providers?
@@ -122,6 +137,12 @@ class HostileCoPilotApp:
             model=model,
             system_prompt=system_prompt,
             toolsets=[calibration_toolset],
+        )
+
+        self._copilot_agent = Agent(
+            model=model,
+            system_prompt=system_prompt,
+            toolsets=[copilot_toolset],
         )
     
     async def run(self):
@@ -155,12 +176,16 @@ class HostileCoPilotApp:
         # or use audio as prompt inference inputs
         assert self._agent is not None
         response_text = None
-        if wake_word == "mining_logger" or wake_word == "copilot":
+        if wake_word == "mining_logger":
             response = await self._agent.run(prompt)
 
             response_text = response.output
         elif wake_word == "calibrate_system":
             response = await self._calibration_agent.run(prompt)
+
+            response_text = response.output
+        elif wake_word == "copilot":
+            response = await self._copilot_agent.run(prompt)
 
             response_text = response.output
         else:
@@ -202,10 +227,30 @@ class HostileCoPilotApp:
         print("Performing test")
         await self._voice_client.speak("Test")
 
-    async def _tool_perform_scan(self):
+    async def _prompt_user_for_input(self, prompt: str) -> str:
+        """
+        Prompt the user for input
+
+        Args:
+            prompt (str): The prompt to ask to the user
+
+        Returns:
+            str: The user's input
+        """
+
+        await self._voice_client.speak(prompt, wait_for_completion=True)
+
+        return await self._voice_client.listen()
+
+    async def _tool_perform_scan(self) -> ScanResponse | None:
         """
         Perform a scan
         """
+        
+        if self._current_location is None:
+            await self._voice_client.speak("Please specify the current location")
+            return "Please specify the current location"
+        
         task = MiningScanTask(self._config, self._app_config)
         await task.run()
 
@@ -224,6 +269,42 @@ class HostileCoPilotApp:
             self._commodity_grader
         )
         await grade_task.run()
+
+        return scan_result
+
+    async def _tool_set_current_location(self, location: str):
+        """
+        Set the current location
+
+        Args:
+            location (str): The current location of the mining ship.
+        """
+        
+        self._current_location = location
+        print("Setting current location")
+        await self._voice_client.speak("Current location set")
+
+    async def _tool_set_navigation_route(self, destination: str):
+        """
+        Set a navigation route to the specified destination.
+        """
+        task = NavSetRouteTask(self._config, self._app_config, self._voice_client, self._keyboard, destination)
+        await task.run()
+
+    async def _tool_get_commodity_data(self) -> list[CommodityData]:
+        """
+        Get commodity data, including buy/sell prices, legality status, and refined status.
+        """
+        commodities: list[dict[str, Any]] = await self._uexcorp_client.fetch_commodities()
+
+        # convert into a list of pydantic models
+        commodity_data: list[CommodityData] = [
+            CommodityData(**commodity)
+            for commodity in commodities
+            if bool(commodity.get("is_visible"))
+        ]
+
+        return commodity_data
 
     async def _tool_setup_mining_calibration(self):
         """
@@ -249,6 +330,10 @@ class HostileCoPilotApp:
         omegaconf.OmegaConf.save(self._app_config._config, self._app_config_path)
 
     async def _tool_setup_ping_scan_calibration(self):
+        """
+        One time task to calibrate the game screen UI coordinates for extracting
+        ping scan data.
+        """
         task = GetScreenBoundingBoxTask(self._config)
         await task.run()
         
@@ -267,7 +352,11 @@ class HostileCoPilotApp:
 
         omegaconf.OmegaConf.save(self._app_config._config, self._app_config_path)
 
-    async def _tool_setup_nav_search_calibration(self):
+    async def _tool_setup_nav_route_calibration(self):
+        """
+        One time task to calibrate the game screen UI coordinates for searching
+        and setting navigation routes.
+        """
         task = GetScreenLocationTask(self._config)
         await task.run()
         
