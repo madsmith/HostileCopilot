@@ -182,6 +182,7 @@ class VoiceClient:
         logger.debug("Recording started")
         self._recording_state.start()
         if confirmed:
+            self._silence_duration = 0
             if wake_word:
                 self._active_wake_word = wake_word
             self._recording_state.confirm()
