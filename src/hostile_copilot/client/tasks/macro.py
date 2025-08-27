@@ -14,9 +14,11 @@ MacroStep3T = tuple[str, Any | None, Any | None]
 MacroStepT = MacroStep2T | MacroStep3T
 
 
+
 keyboard_actions = {
     "vkbd:press": Keyboard.press_key,
     "vkbd:sequence": Keyboard.type_sequence,
+    "vkbd:sleep": Keyboard.asyncSleep,
 }
 
 class MacroTask(Task):
