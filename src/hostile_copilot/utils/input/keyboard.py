@@ -109,10 +109,13 @@ class Keyboard:
         
         await self._queue.put(_PressReq(key=key_obj, interkey_delay=ik, press_duration=pd))
 
-    async def type_sequence(self, keys: Iterable[KeyLikeT], interkey_delay: float | None = None):
+    async def type_sequence(self, keys: Iterable[KeyLikeT], interkey_delay: float | None = None, press_duration: float | None = None):
         for k in keys:
-            await self.press_key(k, interkey_delay=interkey_delay)
-
+            await self.press_key(k, interkey_delay=interkey_delay, press_duration=press_duration)
+    
+    async def asyncSleep(self, seconds: float):
+        await asyncio.sleep(seconds)
+    
     # ---------- Internal ----------
     async def _worker(self):
         logger.debug("Keyboard worker started")
