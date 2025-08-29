@@ -4,6 +4,17 @@ openai:
 
 uexcorp:
   bearer_token: "${private.uexcorp.bearer_token}"
+  cache_expiry: 86400
+  api_calls:
+    star_systems:
+      cache_expiry: 2592000
+    moons:
+      cache_expiry: 2592000
+    planets:
+      cache_expiry: 2592000
+    orbits:
+      cache_expiry: 2592000
+    
 
 app:
   config: "config/settings.yaml"
