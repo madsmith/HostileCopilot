@@ -8,10 +8,17 @@ from urllib.parse import urljoin
 
 from hostile_copilot.config import OmegaConfig
 
+from .types import StarSystemID
+
 logger = logging.getLogger(__name__)
 
 class UEXCorpException(Exception):
     pass
+
+class UEXCorpAPIException(Exception):
+    def __init__(self, http_code: int, message: str):
+        self.http_code = http_code
+        self.message = message
 
 class UEXCorpClient:
     def __init__(self, config: OmegaConfig):
@@ -96,11 +103,11 @@ class UEXCorpClient:
         
         
         if response["http_code"] != 200:
-            raise UEXCorpException(f"Request failed: {response['http_code']} - {response['messsage']}")
+            raise UEXCorpAPIException(response['http_code'], response['messsage'])
 
         if "data" not in response:
             logger.warning(f"No data in response: {response}")
-            raise UEXCorpException("No data in response")
+            raise UEXCorpAPIException(500, "No data in response")
 
         response_data = response["data"]
 
@@ -178,72 +185,122 @@ class UEXCorpClient:
         """
         return await self.api_call_cached_data("star_systems")
     
-    async def fetch_moons(self, star_system: int) -> list[dict[str, Any]]:
+    async def fetch_moons(self, star_system: StarSystemID | int) -> list[dict[str, Any]]:
         """
         Fetch a list of moons from UEXCorp.
 
         Args:
-            star_system (int): The ID of the star system to fetch moons for.
+            star_system (StarSystemID | int): The ID of the star system to fetch moons for.
 
         Returns:
             list[dict[str, Any]]: A list of moons.
         """
-        assert isinstance(star_system, int) and star_system > 0, "star_system must be a positive integer"
+        assert isinstance(star_system, (StarSystemID, int))
+
+        if isinstance(star_system, StarSystemID):
+            star_system = star_system.value
 
         return await self.api_call_cached_data("moons", "GET", {"id_star_system": star_system})
 
-    async def fetch_planets(self, star_system: int) -> list[dict[str, Any]]:
+    async def fetch_planets(self, star_system: StarSystemID | int) -> list[dict[str, Any]]:
         """
         Fetch a list of planets from UEXCorp.
 
         Args:
-            star_system (int): The ID of the star system to fetch planets for.
+            star_system (StarSystemID | int): The ID of the star system to fetch planets for.
 
         Returns:
             list[dict[str, Any]]: A list of planets.
         """
-        assert isinstance(star_system, int) and star_system > 0, "star_system must be a positive integer"
+        assert isinstance(star_system, (StarSystemID, int))
+
+        if isinstance(star_system, StarSystemID):
+            star_system = star_system.value
 
         return await self.api_call_cached_data("planets", "GET", {"id_star_system": star_system})
 
-    async def fetch_orbits(self, star_system: int) -> list[dict[str, Any]]:
+    async def fetch_orbits(self, star_system: StarSystemID | int) -> list[dict[str, Any]]:
         """
         Fetch a list of orbits from UEXCorp.
 
         Args:
-            star_system (int): The ID of the star system to fetch orbits for.
+            star_system (StarSystemID | int): The ID of the star system to fetch orbits for.
 
         Returns:
             list[dict[str, Any]]: A list of orbits.
         """
-        assert isinstance(star_system, int) and star_system > 0, "star_system must be a positive integer"
+        assert isinstance(star_system, (StarSystemID, int))
+
+        if isinstance(star_system, StarSystemID):
+            star_system = star_system.value
 
         return await self.api_call_cached_data("orbits", "GET", {"id_star_system": star_system})
 
-    async def fetch_stations(self, star_system: int) -> list[dict[str, Any]]:
+    async def fetch_stations(self, star_system: StarSystemID | int) -> list[dict[str, Any]]:
         """
         Fetch a list of stations from UEXCorp.
 
         Args:
-            star_system (int): The ID of the star system to fetch stations for.
+            star_system (StarSystemID | int): The ID of the star system to fetch stations for.
 
         Returns:
             list[dict[str, Any]]: A list of stations.
         """
-        assert isinstance(star_system, int) and star_system > 0, "star_system must be a positive integer"
+        assert isinstance(star_system, (StarSystemID, int))
+
+        if isinstance(star_system, StarSystemID):
+            star_system = star_system.value
 
         return await self.api_call_cached_data("space_stations", "GET", {"id_star_system": star_system})
 
-    async def fetch_cities(self, star_system: int) -> list[dict[str, Any]]:
+    async def fetch_cities(self, star_system: StarSystemID | int) -> list[dict[str, Any]]:
         """
         Fetch a list of cities from UEXCorp.
 
         Args:
-            star_system (int): The ID of the star system to fetch cities for.
+            star_system (StarSystemID | int): The ID of the star system to fetch cities for.
 
         Returns:
             list[dict[str, Any]]: A list of cities.
         """
-        assert isinstance(star_system, int) and star_system > 0, "star_system must be a positive integer"
+        assert isinstance(star_system, (StarSystemID, int))
+
+        if isinstance(star_system, StarSystemID):
+            star_system = star_system.value
 
         return await self.api_call_cached_data("cities", "GET", {"id_star_system": star_system})
+
+    async def fetch_outposts(self, star_system: StarSystemID | int) -> list[dict[str, Any]]:
+        """
+        Fetch a list of outposts from UEXCorp.
+
+        Args:
+            star_system (StarSystemID | int): The ID of the star system to fetch outposts for.
+
+        Returns:
+            list[dict[str, Any]]: A list of outposts.
+        """
+        assert isinstance(star_system, (StarSystemID, int))
+
+        if isinstance(star_system, StarSystemID):
+            star_system = star_system.value
+
+        return await self.api_call_cached_data("outposts", "GET", {"id_star_system": star_system})
+
+    async def fetch_points_of_interest(self, star_system: StarSystemID | int) -> list[dict[str, Any]]:
+        """
+        Fetch a list of points of interest from UEXCorp.
+
+        Args:
+            star_system (StarSystemID | int): The ID of the star system to fetch points of interest for.
+
+        Returns:
+            list[dict[str, Any]]: A list of POIs.
+        """
+        assert isinstance(star_system, (StarSystemID, int))
+
+        if isinstance(star_system, StarSystemID):
+            star_system = star_system.value
+
+        return await self.api_call_cached_data("poi", "GET", {"id_star_system": star_system})
+        
