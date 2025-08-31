@@ -151,7 +151,7 @@ async def retrieve_locations(client: UEXCorpClient) -> dict[BaseLocationID, Loca
 
 async def print_locations(locations: dict[BaseLocationID, LocationType]):
     for location in locations.values():
-        print(location)
+        print(location.name)
 
 async def search_locations(locations: dict[BaseLocationID, LocationType]):
     try:
