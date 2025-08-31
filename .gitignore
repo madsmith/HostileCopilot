@@ -38,6 +38,7 @@ mypy.ini
 config/settings.yaml
 .logfire/logfire_credentials.json
 commodity.json
+TODO.md
 
 #Runtime data
 mining_logger.db
