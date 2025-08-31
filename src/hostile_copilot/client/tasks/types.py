@@ -20,7 +20,15 @@ class ScanResponse(BaseModel):
         None,
         description="The parsed scan.  If no scan data is present in the image, return null."
     )
+
+class NavSetRouteResponse(BaseModel):
+    success: bool
+    message: str
     
+class SetLocationResponse(BaseModel):
+    success: bool
+    message: str
+
 class CommodityData(BaseModel):
     name: str
     is_buyable: bool = Field(description="Whether the commodity can be bought in shops.")

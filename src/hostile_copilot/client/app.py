@@ -15,6 +15,7 @@ from hostile_copilot.audio import AudioDevice
 from hostile_copilot.utils.input.keyboard import Keyboard
 from hostile_copilot.client.uexcorp import UEXCorpClient
 from hostile_copilot.mining_logger import MiningLogger
+from hostile_copilot.client.components.locations import LocationProvider
 
 from .commodity_grader import CommodityGrader
 from .voice import VoiceClient
@@ -25,9 +26,10 @@ from .tasks import (
     MacroTask,
     MiningScanTask,
     MiningScanGraderTask,
-    NavSetRouteTask
+    NavSetRouteTask,
+    SetLocationResponse
 )
-from .tasks.types import CommodityData, ScanResponse
+from .tasks.types import CommodityData, ScanResponse, NavSetRouteResponse
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +59,7 @@ class HostileCoPilotApp:
 
         self._mining_logger: MiningLogger = MiningLogger(self._config)
         self._commodity_grader: CommodityGrader = CommodityGrader(self._config)
+        self._location_provider: LocationProvider = LocationProvider(self._config, self._uexcorp_client)
 
         self._keyboard = Keyboard()
 
@@ -113,6 +116,7 @@ class HostileCoPilotApp:
         # Tool registration
         toolset = FunctionToolset(tools=[
             self._tool_set_current_location,
+            self._tool_search_locations,
             self._prompt_user_for_input,
             self._tool_perform_scan,
             self._tool_get_commodity_data,
@@ -121,6 +125,7 @@ class HostileCoPilotApp:
         copilot_toolset = FunctionToolset(tools=[
             self._prompt_user_for_input,
             self._tool_set_current_location,
+            self._tool_search_locations,
             self._tool_set_navigation_route,
             self._tool_get_commodity_data,
         ])
@@ -274,24 +279,65 @@ class HostileCoPilotApp:
 
         return scan_result
 
-    async def _tool_set_current_location(self, location: str):
+    async def _tool_set_current_location(self, location: str) -> SetLocationResponse:
         """
         Set the current location
 
         Args:
             location (str): The current location of the mining ship.
         """
-        
-        self._current_location = location
-        logger.info(f"Current location set to {location}")
-        await self._voice_client.speak(f"Current location set to {location}")
+        matches = await self._location_provider.search(location)
 
-    async def _tool_set_navigation_route(self, destination: str):
+        if len(matches) == 1:
+            self._current_location = matches[0].name
+            return SetLocationResponse(
+                success=True,
+                message=f"Current location set to {self._current_location}"
+            )
+        elif len(matches) > 1:
+            return SetLocationResponse(
+                success=False,
+                message=f"Location {location} is ambiguous.  Matches: {', '.join([match.name for match in matches])}"
+            )
+        else:
+            return SetLocationResponse(
+                success=False,
+                message=f"Location {location} not found."
+            )
+    
+    async def _tool_search_locations(self, search_string: str) -> list[str]:
+        """
+        Search for locations matching the specified search string
+
+        Args:
+            search_string (str): The search string to use.
+
+        Returns:
+            list[str]: A list of location names matching the search string.
+        """
+        locations = await self._location_provider.search(search_string)
+        return [location.name for location in locations]
+
+    async def _tool_set_navigation_route(self, destination: str) -> NavSetRouteResponse:
         """
         Set a navigation route to the specified destination.
         """
-        task = NavSetRouteTask(self._config, self._app_config, self._voice_client, self._keyboard, destination)
-        await task.run()
+
+        matches = await self._location_provider.search(destination)
+
+        if len(matches) > 1:
+            return NavSetRouteResponse(
+                success=False,
+                message=f"Location {destination} is ambiguous.  Matches: {', '.join([match.name for match in matches])}"
+            )
+        elif len(matches) == 0:
+            return NavSetRouteResponse(
+                success=False,
+                message=f"Location {destination} not found."
+            )
+        else:
+            task = NavSetRouteTask(self._config, self._app_config, self._voice_client, self._keyboard, self._location_provider, destination)
+            return await task.run()
 
     async def _tool_get_commodity_data(self) -> list[CommodityData]:
         """

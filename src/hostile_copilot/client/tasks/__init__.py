@@ -1,5 +1,5 @@
 from .base import Task
-from .types import Coordinate
+from .types import Coordinate, SetLocationResponse
 from .screen_bounding_box import GetScreenBoundingBoxTask
 from .screen_get_location import GetScreenLocationTask
 from .macro import MacroTask
@@ -15,5 +15,6 @@ __all__ = [
     "MacroTask",
     "MiningScanTask",
     "MiningScanGraderTask",
-    "NavSetRouteTask"
+    "NavSetRouteTask",
+    "SetLocationResponse"
 ]

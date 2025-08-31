@@ -21,6 +21,10 @@ class LocationValidationResponse(Enum):
     VALID = 0
     AMBIGUOUS = 1
     INVALID = 2
+    
+    def __bool__(self) -> bool:
+        # Only VALID should evaluate to True in boolean context
+        return self is LocationValidationResponse.VALID
 
 class LocationProvider:
     def __init__(self, config: OmegaConfig, client: UEXCorpClient):
@@ -43,21 +47,27 @@ class LocationProvider:
 
         return self._locations.values()
 
-    async def is_valid_location(self, location: str) -> LocationValidationResponse:
+    async def search(self, search_str: str) -> list[LocationType]:
         locations = await self.get_locations()
-        search_key = location.lower()
+        search_key = self._normalize_name(search_str)
         
-        candidates = [loc for loc in locations if search_key in loc.name.lower()]
+        candidates = [loc for loc in locations if search_key in self._normalize_name(loc.name)]
+        return candidates
+    
+    async def is_valid_location(self, location: str) -> LocationValidationResponse:
+        locations = await self.search(location)
 
-        if len(candidates) == 1:
+        if len(locations) == 1:
             return LocationValidationResponse.VALID
-        elif len(candidates) > 1:
+        elif len(locations) > 1:
             return LocationValidationResponse.AMBIGUOUS
         else:
             return LocationValidationResponse.INVALID
 
-    async def get_location_stem(self, location: str) -> str | None:
+    async def get_location_stem(self, location: str | LocationType) -> str | None:
         locations = await self.get_locations()
+        if not isinstance(location, str):
+            location = location.name
         stem = self._shortest_unique_stem(location, locations)
         return stem
 
