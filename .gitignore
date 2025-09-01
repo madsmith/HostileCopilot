@@ -50,3 +50,5 @@ cropped_image.png
 cache/*
 screenshots/*
 locations.json
+*.yml.bak
+*.yaml.bak
