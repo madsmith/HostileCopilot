@@ -39,7 +39,7 @@ class NavSetRouteTask(Task):
         matches = await self._location_provider.search(self._destination)
         valid_location: LocationType | None = None
         if len(matches) > 1:
-            return NavSetRouteResponse(success=False, message=f"Location {self._destination} is ambiguous.\n\nMatches:\n{[location.name for location in matches]}")
+            return NavSetRouteResponse(success=False, message=f"Location {self._destination} is ambiguous.\n\nMatches:\n{[location.name for location in matches]}. Prompt for clarification.")
         elif len(matches) == 0:
             return NavSetRouteResponse(success=False, message=f"Location {self._destination} not found.")
         else:
