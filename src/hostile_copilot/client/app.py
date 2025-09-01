@@ -10,6 +10,7 @@ from pydantic_ai.models.openai import OpenAIModel
 import pyaudio
 from typing import Any
 
+from hostile_copilot.client.tasks.ping_analysis import PingAnalysisResult
 from hostile_copilot.config import OmegaConfig, load_config
 from hostile_copilot.audio import AudioDevice
 from hostile_copilot.utils.input.keyboard import Keyboard
@@ -28,7 +29,9 @@ from .tasks import (
     MiningScanTask,
     MiningScanGraderTask,
     NavSetRouteTask,
-    SetLocationResponse
+    SetLocationResponse,
+    PingAnalysisTask,
+    PingResponse
 )
 from .tasks.types import CommodityData, ScanResponse, NavSetRouteResponse
 
@@ -66,6 +69,7 @@ class HostileCoPilotApp:
 
         self._agent: Agent | None = None
         self._calibration_agent: Agent | None = None
+        self._calibration_lock: asyncio.Lock = asyncio.Lock()
 
         self._is_running: bool = False
 
@@ -220,6 +224,8 @@ class HostileCoPilotApp:
         logger.info(f"Immediate activation: {wake_word}")
         if wake_word == "scan_this":
             await self._tool_perform_scan()
+        elif wake_word == "analyze_ping":
+            await self._tool_perform_analysis()
         elif wake_word == "stop":
             self._voice_client.stop_playback()
 
@@ -257,7 +263,8 @@ class HostileCoPilotApp:
 
     async def _tool_perform_scan(self) -> ScanResponse | None:
         """
-        Perform a scan
+        Perform a scan of the mineable object to determine the composition and grade
+        of the object.
         """
         
         if self._current_location is None:
@@ -283,6 +290,36 @@ class HostileCoPilotApp:
         await grade_task.run()
 
         return scan_result
+
+    async def _tool_perform_analysis(self) -> PingResponse | None:
+        """
+        Perform an analysis of the current radar ping.
+        """
+        
+        task = PingAnalysisTask(self._config, self._app_config)
+        await task.run()
+
+        ping_result = task.ping_result
+        if ping_result is None or ping_result.ping_data is None:
+            await self._voice_client.speak("No ping data found")
+            return
+        
+        analysis_result = task.process_ping(ping_result.ping_data)
+        if analysis_result is None:
+            logger.warning("Unexpected empty response while processing ping")
+            await self._voice_client.speak("No ping data found")
+            return
+
+        if isinstance(analysis_result, PingAnalysisResult):
+            if analysis_result.count == 1:
+                msg = f"Detected {analysis_result.name}"
+            else:
+                msg = f"Detected {analysis_result.name}. Quantity: {analysis_result.count}"
+            await self._voice_client.speak(msg)
+        else:
+            logger.info(f"Signature readout: {analysis_result}")
+        
+        return ping_result
 
     async def _tool_set_current_location(self, location: str) -> SetLocationResponse:
         """
@@ -365,64 +402,79 @@ class HostileCoPilotApp:
         One time task to calibrate the game screen UI coordinates for extracting
         mining data.
         """
-        task = GetScreenBoundingBoxTask(self._config)
-        await task.run()
-        
-        start, end = task.bounding_box
+        async with self._calibration_lock:
+            await self._voice_client.speak(
+                "Select region of the screen with mining scan data.",
+                wait_for_completion=True
+            )
+            task = GetScreenBoundingBoxTask(self._config)
+            await task.run()
+            
+            start, end = task.bounding_box
 
-        # Ensure path exists... TODO: make config support defaulting path parents
-        if "calibration" not in self._app_config:
-            self._app_config.set("calibration", {})
-        if "calibration.mining_scan" not in self._app_config:
-            self._app_config.set("calibration.mining_scan", {})
-        
-        self._app_config.set("calibration.mining_scan.start_x", start.x)
-        self._app_config.set("calibration.mining_scan.start_y", start.y)
-        self._app_config.set("calibration.mining_scan.end_x", end.x)
-        self._app_config.set("calibration.mining_scan.end_y", end.y)
+            # Ensure path exists... TODO: make config support defaulting path parents
+            if "calibration" not in self._app_config:
+                self._app_config.set("calibration", {})
+            if "calibration.mining_scan" not in self._app_config:
+                self._app_config.set("calibration.mining_scan", {})
+            
+            self._app_config.set("calibration.mining_scan.start_x", start.x)
+            self._app_config.set("calibration.mining_scan.start_y", start.y)
+            self._app_config.set("calibration.mining_scan.end_x", end.x)
+            self._app_config.set("calibration.mining_scan.end_y", end.y)
 
-        omegaconf.OmegaConf.save(self._app_config._config, self._app_config_path)
+            omegaconf.OmegaConf.save(self._app_config._config, self._app_config_path)
 
     async def _tool_setup_ping_scan_calibration(self):
         """
         One time task to calibrate the game screen UI coordinates for extracting
         ping scan data.
         """
-        task = GetScreenBoundingBoxTask(self._config)
-        await task.run()
-        
-        start, end = task.bounding_box
+        async with self._calibration_lock:
+            await self._voice_client.speak(
+                "Select region of the screen with ping scan data.",
+                wait_for_completion=True
+            )
+            task = GetScreenBoundingBoxTask(self._config)
+            await task.run()
+            
+            start, end = task.bounding_box
 
-        # Ensure path exists... TODO: make config support defaulting path parents
-        if "calibration" not in self._app_config:
-            self._app_config.set("calibration", {})
-        if "calibration.ping_scan" not in self._app_config:
-            self._app_config.set("calibration.ping_scan", {})
-        
-        self._app_config.set("calibration.ping_scan.start_x", start.x)
-        self._app_config.set("calibration.ping_scan.start_y", start.y)
-        self._app_config.set("calibration.ping_scan.end_x", end.x)
-        self._app_config.set("calibration.ping_scan.end_y", end.y)
+            # Ensure path exists... TODO: make config support defaulting path parents
+            if "calibration" not in self._app_config:
+                self._app_config.set("calibration", {})
+            if "calibration.ping_scan" not in self._app_config:
+                self._app_config.set("calibration.ping_scan", {})
+            
+            self._app_config.set("calibration.ping_scan.start_x", start.x)
+            self._app_config.set("calibration.ping_scan.start_y", start.y)
+            self._app_config.set("calibration.ping_scan.end_x", end.x)
+            self._app_config.set("calibration.ping_scan.end_y", end.y)
 
-        omegaconf.OmegaConf.save(self._app_config._config, self._app_config_path)
+            omegaconf.OmegaConf.save(self._app_config._config, self._app_config_path)
 
     async def _tool_setup_nav_route_calibration(self):
         """
         One time task to calibrate the game screen UI coordinates for searching
         and setting navigation routes.
         """
-        task = GetScreenLocationTask(self._config)
-        await task.run()
-        
-        location = task.last_click
+        async with self._calibration_lock:
+            await self._voice_client.speak(
+                "Click location of the navigation search button.",
+                wait_for_completion=True
+            )
+            task = GetScreenLocationTask(self._config)
+            await task.run()
+            
+            location = task.last_click
 
-        # Ensure path exists... TODO: make config support defaulting path parents
-        if "calibration" not in self._app_config:
-            self._app_config.set("calibration", {})
-        if "calibration.nav_search" not in self._app_config:
-            self._app_config.set("calibration.nav_search", {})
-        
-        self._app_config.set("calibration.nav_search.location.x", location.x)
-        self._app_config.set("calibration.nav_search.location.y", location.y)
+            # Ensure path exists... TODO: make config support defaulting path parents
+            if "calibration" not in self._app_config:
+                self._app_config.set("calibration", {})
+            if "calibration.nav_search" not in self._app_config:
+                self._app_config.set("calibration.nav_search", {})
+            
+            self._app_config.set("calibration.nav_search.location.x", location.x)
+            self._app_config.set("calibration.nav_search.location.y", location.y)
 
-        omegaconf.OmegaConf.save(self._app_config._config, self._app_config_path)
+            omegaconf.OmegaConf.save(self._app_config._config, self._app_config_path)

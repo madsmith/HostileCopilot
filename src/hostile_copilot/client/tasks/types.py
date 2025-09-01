@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Union
 from pydantic import BaseModel, Field
 
 from hostile_copilot.mining_logger.types import ScanData
@@ -19,6 +19,22 @@ class ScanResponse(BaseModel):
     scan_data: Optional[ScanData] = Field(
         None,
         description="The parsed scan.  If no scan data is present in the image, return null."
+    )
+
+class PingSignatureReadout(BaseModel):
+    infrared: int = Field(description="The infrared ping value")
+    em: int = Field(description="The EM ping value")
+    crosssection: int = Field(description="The crosssection ping value")
+
+class PingResourceSummary(BaseModel):
+    radar: int = Field(description="The sum value of the resources found at the ping.")
+
+PingData = Union[PingResourceSummary, PingSignatureReadout]
+
+class PingResponse(BaseModel):
+    ping_data: Optional[PingData] = Field(
+        None,
+        description="The parsed ping.  If no ping data is present in the image, return null."
     )
 
 class NavSetRouteResponse(BaseModel):

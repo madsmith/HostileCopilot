@@ -94,6 +94,16 @@ ping_analysis_agent:
       {
         "ping_data": null
       }
+  resource_mapping: {
+    1660: "Asteroid I-Type",
+    1700: "Asteroid C-Type",
+    1720: "Asteroid S-Type",
+    1750: "Asteroid P-Type",
+    1850: "Asteroid M-Type",
+    1870: "Asteroid Q-Type",
+    1900: "Asteroid E-Type",
+    2000: "Salvage Panels"
+  }
     
 
 # Text-to-Speech settings
@@ -150,7 +160,7 @@ openwakeword:
       path: "./resources/models/analyze_ping.onnx"
       confirmation_audio: "./resources/audio/scan.mp3"
       suppress_follow_up: true
-      activation_count: 4
+      activation_count: 3
     - name: "copilot"
       path: "./resources/models/copilot.onnx"
       confirmation_audio: "./resources/audio/activation.wav"
