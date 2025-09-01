@@ -13,6 +13,7 @@ from typing import Any
 from hostile_copilot.config import OmegaConfig, load_config
 from hostile_copilot.audio import AudioDevice
 from hostile_copilot.utils.input.keyboard import Keyboard
+from hostile_copilot.utils.speech import roundify_numbers
 from hostile_copilot.client.uexcorp import UEXCorpClient
 from hostile_copilot.mining_logger import MiningLogger
 from hostile_copilot.client.components.locations import LocationProvider
@@ -157,6 +158,7 @@ class HostileCoPilotApp:
     
     async def run(self):
         self._is_running = True
+        await self._voice_client.speak("System is online")
 
         try:
             self._voice_task = asyncio.create_task(
@@ -211,7 +213,8 @@ class HostileCoPilotApp:
         if response_text is not None:
             print(f"Prompt: {prompt}")
             print(f"Response: {response_text}")
-            await self._voice_client.speak(response_text)
+            spoken_response = roundify_numbers(response_text)
+            await self._voice_client.speak(spoken_response)
 
     async def _on_immediate_activation(self, wake_word: str):
         logger.info(f"Immediate activation: {wake_word}")
@@ -344,6 +347,7 @@ class HostileCoPilotApp:
         Get commodity data, including buy/sell prices, legality status, and refined status.
         """
         commodities: list[dict[str, Any]] = await self._uexcorp_client.fetch_commodities()
+        print(commodities)
 
         # convert into a list of pydantic models
         commodity_data: list[CommodityData] = [
