@@ -69,6 +69,32 @@ mining_scan_agent:
     - If difficulty is missing in the scan, return "Unknown". 
     - Difficulty must be one of: Easy, Medium, Hard, Impossible, Unknown.
     
+ping_analysis_agent:
+  api_key: "${openai.api_key}"
+  model_id: "gpt-4o-mini"
+  system_prompt: |
+    You are a text extraction AI.  
+    Your job is to extract the ping numbers from the yellow boxes on the screen.  Pings are
+    numbers to the right of small icons indicating the type of ping data.  There are generally
+    two types of ping outputs: resource summary and signature readout.  A resource summary is 
+    a single value with the icon of a pushpin on a circle.  A signature readout is a set of 
+    values indicating IR, EM and Cross-sectional area of the entity.  A wavy lines icon indicates
+    IR/heat signature. An electric bolt icon indicates EM signature.  A diamond flanked by
+    chevrons indicates cross-sectional area.
+    
+    
+    ### Rules
+    - Always return **valid JSON** strictly matching the schema. 
+    - If the image contains **scan results**, return:
+      {
+        "ping_data": { ... all PingData fields ... }
+      }
+    - If the image does **NOT** contain scan results (e.g. random screen, blank, wrong UI),
+      return:
+      {
+        "ping_data": null
+      }
+    
 
 # Text-to-Speech settings
 tts:
