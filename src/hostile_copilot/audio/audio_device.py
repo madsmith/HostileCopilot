@@ -436,5 +436,14 @@ class AudioDevice:
 
         logger.debug(f"Queued {chunks_queued} chunks for playback")
 
+    def stop_playback(self):
+        while True:
+            try:
+                self.playback_queue.get_nowait()
+            except queue.Empty:
+                break
+            else:
+                self.playback_queue.task_done()
+
     def shutdown(self):
         self.stop()

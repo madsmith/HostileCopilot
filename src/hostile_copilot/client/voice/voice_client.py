@@ -238,6 +238,8 @@ class VoiceClient:
         except Exception as e:
             logger.exception(f"TTS inference failed: {e}")
             
+    def stop_playback(self):
+        self._audio_device.stop_playback()
  
     def _process_vad(self):
         assert self._vad_model is not None, "VAD model not initialized"

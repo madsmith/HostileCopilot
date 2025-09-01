@@ -220,6 +220,8 @@ class HostileCoPilotApp:
         logger.info(f"Immediate activation: {wake_word}")
         if wake_word == "scan_this":
             await self._tool_perform_scan()
+        elif wake_word == "stop":
+            self._voice_client.stop_playback()
 
     async def _prompt_user_for_input(self, prompt: str) -> str | None:
         """
