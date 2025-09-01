@@ -102,7 +102,7 @@ async def main():
     config = load_config()
 
     api_key = config.get("mining_scan_agent.api_key", "")
-    base_url = config.get("mining_scan_agentagent.base_url", None)
+    base_url = config.get("mining_scan_agent.base_url", None)
     provider = OpenAIProvider(api_key=api_key, base_url=base_url)
 
     model_id = config.get("mining_scan_agent.model_id")
@@ -111,7 +111,6 @@ async def main():
         provider=provider,
         model_name=model_id,
     )
-
 
     agent = Agent[None, ScanResponse](
         model=model,
