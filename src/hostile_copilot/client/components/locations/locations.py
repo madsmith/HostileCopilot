@@ -175,20 +175,25 @@ class LocationProvider:
             if loc.name is not None and (normalized_name := self._normalize_name(loc.name)) != target_normalized
         ]
 
-        # If any other entry starts with the full target, there is no unique prefix
-        # (e.g., target = "Arc", other = "Arc") would have been filtered above; but
-        # target = "ArcCorp" and other = "ArcCorp Mining" means no unique prefix shorter than full target.
-        # We'll still try; if even the full target isn't unique as a prefix, return None.
+        # Consider collisions at ANY word boundary in compared names, not just the very start.
+        # Word boundary is defined as index 0 or any position preceded by a non-alphanumeric.
+        def word_boundaries(s: str) -> list[int]:
+            return [i for i in range(len(s)) if i == 0 or not s[i - 1].isalnum()]
 
+        def any_word_prefix(s: str, prefix: str) -> bool:
+            for i in word_boundaries(s):
+                if s.startswith(prefix, i):
+                    return True
+            return False
+
+        # If any other entry starts with the prefix at ANY word boundary, it's not unique yet.
         for i in range(1, len(target_normalized) + 1):
             prefix = target_normalized[:i]
-
-            # Check if any other entry starts with prefix
-            if not any(name.startswith(prefix) for name in names):
+            if not any(any_word_prefix(name, prefix) for name in names):
                 return prefix
 
-        # Check if the full target itself is unique as a prefix
-        if not any(name.startswith(target_normalized) for name in names):
+        # Check if the full target itself is unique as a prefix at any word boundary
+        if not any(any_word_prefix(name, target_normalized) for name in names):
             return target_normalized
 
         return None
