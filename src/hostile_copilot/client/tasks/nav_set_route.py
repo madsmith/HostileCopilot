@@ -56,7 +56,7 @@ class NavSetRouteTask(Task):
             ("vkbd:sleep", 0.2),
             ("click", (search_location.x, search_location.y)),
             ("vkbd:sequence", list(search_term), {"interkey_delay": 0.02, "press_duration": 0.1}),
-            ("vkbd:sleep", 0.5),
+            ("vkbd:sleep", 1),
             ("click", (first_location.x, first_location.y)),
             ("vkbd:sleep", 0.5),
             ("click", (route_location.x, route_location.y)),

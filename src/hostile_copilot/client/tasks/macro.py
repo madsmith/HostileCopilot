@@ -58,8 +58,10 @@ class MacroTask(Task):
 
             if action in keyboard_actions:
                 handler = keyboard_actions[action]
+                logger.debug(f"Executing keyboard action: {action}")
                 await handler(self._keyboard, args, **kwargs)
             elif action in pyautogui.__dict__:
+                logger.debug(f"Executing pyautogui action: {action}")
                 getattr(pyautogui, action)(args, **kwargs)
             else:
                 logger.warning(f"Invalid macro action: {action}")

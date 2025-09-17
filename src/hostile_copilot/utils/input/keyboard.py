@@ -3,7 +3,7 @@ import logging
 import random
 import time
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Iterable, Union
 
 from .gremlin.keyboard import (
     Key,
@@ -25,6 +25,23 @@ class _PressReq:
     interkey_delay: float  # time from previous press start to next press start
     press_duration: float  # time between key down and key up
 
+class _SequenceDoneEvent:
+    def __init__(self):
+        self.mark_done: asyncio.Event = asyncio.Event()
+
+    def mark(self):
+        self.mark_done.set()
+
+    async def wait(self):
+        await self.mark_done.wait()
+
+    def __repr__(self):
+        return f"_SequenceDoneEvent()"
+
+    def __str__(self):
+        return f"_SequenceDoneEvent()"
+
+KeyEvent = Union[_PressReq, _SequenceDoneEvent]
 
 class Keyboard:
     """
@@ -44,7 +61,7 @@ class Keyboard:
         self._min_delay: float = 0.010
 
         # Worker state
-        self._queue: asyncio.Queue[_PressReq] = asyncio.Queue()
+        self._queue: asyncio.Queue[KeyEvent] = asyncio.Queue()
         self._worker_task: asyncio.Task | None = None
         self._running: bool = False
         self._last_start: float = 0.0  # monotonic timestamp of last press start
@@ -112,6 +129,9 @@ class Keyboard:
     async def type_sequence(self, keys: Iterable[KeyLikeT], interkey_delay: float | None = None, press_duration: float | None = None):
         for k in keys:
             await self.press_key(k, interkey_delay=interkey_delay, press_duration=press_duration)
+        done_event = _SequenceDoneEvent()
+        await self._queue.put(done_event)
+        await done_event.wait()
     
     async def asyncSleep(self, seconds: float):
         await asyncio.sleep(seconds)
@@ -121,31 +141,36 @@ class Keyboard:
         logger.debug("Keyboard worker started")
         while self._running:
             try:
-                req = await self._queue.get()
+                req: KeyEvent = await self._queue.get()
                 logger.debug(f"Dequeued: {req}")
 
                 # Check for stop signal
                 if not self._running:
                     break
 
-                # Enforce start time based on last start + req.interkey_delay
-                now = time.monotonic()
-                planned_start = max(self._last_start + req.interkey_delay, now)
-                sleep_s = planned_start - now
-                if sleep_s > 0:
-                    await asyncio.sleep(sleep_s)
+                if isinstance(req, _SequenceDoneEvent):
+                    req.mark_done.set()
+                elif isinstance(req, _PressReq):
+                    # Enforce start time based on last start + req.interkey_delay
+                    now = time.monotonic()
+                    planned_start = max(self._last_start + req.interkey_delay, now)
+                    sleep_s = planned_start - now
+                    if sleep_s > 0:
+                        await asyncio.sleep(sleep_s)
 
-                # Start press: wait until the key is actually pressed (key-down) before
-                # allowing the next item to proceed. This preserves actual start ordering.
-                started_evt = asyncio.Event()
-                t = asyncio.create_task(
-                    self._do_press(req, started_evt),
-                    name=f"Keyboard::press::{getattr(req.key, 'name', 'key')}"
-                )
-                self._active.add(t)
-                t.add_done_callback(self._active.discard)
-                # Wait for the key to actually go down before moving on
-                await started_evt.wait()
+                    # Start press: wait until the key is actually pressed (key-down) before
+                    # allowing the next item to proceed. This preserves actual start ordering.
+                    started_evt = asyncio.Event()
+                    t = asyncio.create_task(
+                        self._do_press(req, started_evt),
+                        name=f"Keyboard::press::{getattr(req.key, 'name', 'key')}"
+                    )
+                    self._active.add(t)
+                    t.add_done_callback(self._active.discard)
+                    # Wait for the key to actually go down before moving on
+                    await started_evt.wait()
+                else:
+                    logger.warning(f"Invalid event: {req} [{type(req)}]")
                 self._last_start = time.monotonic()
             except asyncio.CancelledError:
                 break
