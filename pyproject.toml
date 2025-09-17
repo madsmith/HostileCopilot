@@ -70,11 +70,6 @@ where = ["src"]
 [tool.uv]
 environments = ["sys_platform == 'win32'"]
 
-[tool.uv.workspace]
-members = [
-    "wake_word_training",
-]
-
 [tool.mypy]
 python_version = "3.13"
 warn_return_any = true
