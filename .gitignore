@@ -52,3 +52,5 @@ screenshots/*
 locations.json
 *.yml.bak
 *.yaml.bak
+test_files/*_to_*.wav
+test_files/*_resampled_*.wav
