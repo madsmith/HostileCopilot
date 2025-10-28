@@ -12,6 +12,7 @@ from scipy.ndimage import uniform_filter1d
 
 from hostile_copilot.utils.logging import get_trace_logger
 logger = get_trace_logger(__name__)
+from hostile_copilot.utils.debug.profiler import Profiler
 
 from .audio_data import AudioData
 from .mixer import ChannelMixer
@@ -168,9 +169,9 @@ class AudioDevice:
     def _start_playback_thread(self):
         def playback_worker():
             # We want to deliver the frame before it's due by a small amount.
-            # From testing, it seems to be about 1000 samples so setting 2048 to be
-            # conservative.
-            frame_delivery_offset = 2048 / self.rate
+            # From testing, it seems to be about chunk size samples so deliver
+            # the frame 1.5 chunks in advance.
+            frame_delivery_offset = self.chunk_size * 1.5 / self.rate
             start_time = None
 
             # Convert a timestamp to a relative time
@@ -207,6 +208,7 @@ class AudioDevice:
                         self.playback_buffer.append(frames_data)
                         self.playback_buffer.prune_older_than(time.perf_counter() - MAX_PLAYBACK_BUFFER_AGE)
                     
+                    #with Profiler("playback_write"):
                     stream.write(frames)
 
                     time_to_next_frame = frames_data.end_time() - time.perf_counter()
@@ -216,6 +218,8 @@ class AudioDevice:
                         logger.trace(f"Playback Sleep: {sleep_time:.3f} sec")
                         time.sleep(sleep_time)
                 except queue.Empty:
+                    # if start_time is not None:
+                    #     Profiler.dump()
                     start_time = None
                     continue
             stream.stop_stream()
