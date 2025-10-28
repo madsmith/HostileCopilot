@@ -123,7 +123,6 @@ class HostileCoPilotApp:
             self._tool_set_current_location,
             self._tool_search_locations,
             self._prompt_user_for_input,
-            self._tool_perform_scan,
             self._tool_get_commodity_data,
         ])
 
@@ -223,7 +222,7 @@ class HostileCoPilotApp:
     async def _on_immediate_activation(self, wake_word: str):
         logger.info(f"Immediate activation: {wake_word}")
         if wake_word == "scan_this":
-            await self._tool_perform_scan()
+            await self._tool_perform_scan(tool_mode=False)
         elif wake_word == "analyze_ping":
             await self._tool_perform_analysis()
         elif wake_word == "stop":
@@ -261,21 +260,30 @@ class HostileCoPilotApp:
                 # Cleanup so stray agent_prompt events don't hit a stale future
                 self._agent_prompt_future = None
 
-    async def _tool_perform_scan(self) -> ScanResponse | None:
+    async def _tool_perform_scan(self, tool_mode = True) -> ScanResponse | str | None:
         """
         Perform a scan of the mineable object to determine the composition and grade
         of the object.
         """
         
         if self._current_location is None:
-            return "Please specify the current location"
+            if tool_mode:
+                return "Please specify the current location"
+            else:
+                await self._voice_client.speak("Please specify the current location")
+                return
         
+        logger.info("Performing scan...")
         task = MiningScanTask(self._config, self._app_config)
         await task.run()
+        logger.info("Scan complete")
 
         scan_result = task.scan_result
         if scan_result is None or scan_result.scan_data is None:
-            await self._voice_client.speak("No scan data found")
+            if tool_mode:
+                return "No scan data found"
+            else:
+                await self._voice_client.speak("No scan data found")
             return
 
         self._mining_logger.log(scan_result.scan_data)
@@ -285,7 +293,8 @@ class HostileCoPilotApp:
             self._app_config,
             scan_result,
             self._voice_client,
-            self._commodity_grader
+            self._commodity_grader,
+            tool_mode=tool_mode
         )
         await grade_task.run()
 

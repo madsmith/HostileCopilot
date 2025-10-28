@@ -17,18 +17,23 @@ class MiningScanGraderTask(Task):
         app_config: OmegaConfig,
         scan_result: ScanResponse,
         voice_client: VoiceClient,
-        commodity_grader: CommodityGrader
+        commodity_grader: CommodityGrader,
+        tool_mode: bool = False
     ):
         super().__init__(config)
         self._app_config = app_config
         self._scan_result = scan_result
         self._voice_client = voice_client
         self._commodity_grader = commodity_grader
+        self._tool_mode = tool_mode    
     
     async def run(self):
         scan_data = self._scan_result.scan_data
         if scan_data is None:
-            await self._voice_client.speak("No scan data found")
+            if self._tool_mode:
+                return "No scan data found"
+            else:
+                await self._voice_client.speak("No scan data found")
             return
 
         scan_grade: ScanGrade = self._commodity_grader.grade_scan(scan_data)
@@ -48,7 +53,10 @@ class MiningScanGraderTask(Task):
         
         if best_commodity is None:
             logger.warning("No best commodity found in scan data")
-            await self._voice_client.speak("Scan data error")
+            if self._tool_mode:
+                return "Scan data error"
+            else:
+                await self._voice_client.speak("Scan data error")
             return
         
         if scan_grade.total_value >= notify_value:
@@ -61,7 +69,12 @@ class MiningScanGraderTask(Task):
                     msg = f"High Value Single Item. {commodity.size} SCU of {commodity.commodity}, valued at {commodity.value} A.U.E.C."
                     break
         if msg:
-            await self._voice_client.speak(roundify_numbers(msg))
+            msg = roundify_numbers(msg)
+            if self._tool_mode:
+                return msg
+            else:
+                await self._voice_client.speak(msg)
+            return
 
 
 
