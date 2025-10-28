@@ -40,7 +40,7 @@ class Profiler:
 
     _lock: threading.Lock = threading.Lock()
     _stats: Dict[str, _SectionStats] = {}
-    _enabled: bool = True
+    _enabled: bool = False
 
     def __init__(self, section: str):
         self.section = section
