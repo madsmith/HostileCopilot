@@ -166,8 +166,17 @@ class AudioDevice:
         self._mic_thread.start()
 
     def _start_playback_thread(self):
-        frame_delivery_offset = 0.01
         def playback_worker():
+            # We want to deliver the frame before it's due by a small amount.
+            # From testing, it seems to be about 1000 samples so setting 2048 to be
+            # conservative.
+            frame_delivery_offset = 2048 / self.rate
+            start_time = None
+
+            # Convert a timestamp to a relative time
+            def ts(t):
+                return t - start_time if start_time is not None else t
+
             # TODO: allow playback to be at a different rate than the microphone
             stream = self.audio.open(
                 format=self.format, channels=self.channels, rate=self.rate,
@@ -178,27 +187,36 @@ class AudioDevice:
                     # Notify that playback is ready
                     if not self.playback_ready.is_set():
                         self.playback_ready.set()
+
                     frames = self.playback_queue.get(timeout=0.1)
 
                     timestamp = time.perf_counter()
+                    if start_time is None:
+                        start_time = timestamp
+                    
                     # Align frame to the end of the last frame if sufficiently consecutive
                     if timestamp - self.playback_last_frame_time < self.chunk_size / self.rate:
                         timestamp = self.playback_last_frame_time
 
-                    frames_data = AudioData(frames, timestamp=timestamp, channels=self.channels)
-                    logger.trace(f"Playback Frame: {frames_data.timestamp:.3f} - {frames_data.end_time():.3f}")
+                    frames_data = AudioData(frames, timestamp=timestamp, channels=self.channels, rate=self.rate)
+                    logger.trace(f"Playback Frame: {ts(frames_data.timestamp):.3f} - {ts(frames_data.end_time()):.3f} = {frames_data.duration():.3f}")
+
                     self.playback_last_frame_time = frames_data.end_time()
+
                     with self.playback_buffer_lock:
                         self.playback_buffer.append(frames_data)
                         self.playback_buffer.prune_older_than(time.perf_counter() - MAX_PLAYBACK_BUFFER_AGE)
+                    
                     stream.write(frames)
 
                     time_to_next_frame = frames_data.end_time() - time.perf_counter()
                     sleep_time = max(0, time_to_next_frame - frame_delivery_offset)
+
                     if sleep_time > 0:
                         logger.trace(f"Playback Sleep: {sleep_time:.3f} sec")
                         time.sleep(sleep_time)
                 except queue.Empty:
+                    start_time = None
                     continue
             stream.stop_stream()
 
