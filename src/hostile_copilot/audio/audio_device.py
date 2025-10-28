@@ -109,12 +109,27 @@ class AudioDevice:
         self._audio = None
 
     def _find_devices(self):
+        try:
+            default_input_info = self.audio.get_default_input_device_info()
+            self.mic_index = default_input_info["index"]
+        except IOError as e:
+            pass
+
+        try:
+            default_output_info = self.audio.get_default_output_device_info()
+            self.speaker_index = default_output_info["index"]
+        except IOError as e:
+            pass
+        
         for i in range(self.audio.get_device_count()):
             info = self.audio.get_device_info_by_index(i)
             if self.mic_index == -1 and info["maxInputChannels"] > 0:
                 self.mic_index = i
             if self.speaker_index == -1 and info["maxOutputChannels"] > 0:
                 self.speaker_index = i
+
+        logger.debug(f"Found Microphone: {self.audio.get_device_info_by_index(self.mic_index)['name']}")
+        logger.debug(f"Found Speaker: {self.audio.get_device_info_by_index(self.speaker_index)['name']}")
 
     def set_mic_enabled(self, enabled: bool = True):
         assert not self.running, "Cannot adjust configuration after audio device has started"
