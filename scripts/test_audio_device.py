@@ -1,6 +1,9 @@
+import logging
 from pathlib import Path
+import pyaudio
 import time
 import sys
+
 
 # Ensure project's src/ is on sys.path for local execution
 _script_dir = Path(__file__).resolve().parent
@@ -13,9 +16,12 @@ from hostile_copilot.audio import AudioDevice, load_wave_file
 
 
 def main() -> int:
+    logging.basicConfig(level=logging.DEBUG)
+    logging.getLogger().setLevel("TRACE")
+
     # Resolve project root and wav path
     project_root = _project_root
-    wav_path = project_root / "resources" / "audio" / "activation.wav"
+    wav_path = project_root / "test_files" / "counting.wav"
 
     if not wav_path.exists():
         print(f"WAV file not found: {wav_path}", file=sys.stderr)
@@ -25,10 +31,13 @@ def main() -> int:
     audio = load_wave_file(wav_path)
 
     # Configure AudioDevice to match the WAV to avoid resampling
+    rate = 44100
+    channels = 2
+    print(f"Opening Audio Device: rate={rate}, channels={channels}")
     device = AudioDevice(
-        format=audio.format,
-        rate=audio.rate,
-        channels=audio.channels,
+        format=pyaudio.paInt16,
+        rate=rate,
+        channels=channels,
         chunk_size=1024,
     )
 
@@ -44,6 +53,7 @@ def main() -> int:
         device.play(audio)
 
         # Wait for audio to finish plus a small buffer
+        print(f"Waiting for audio to finish: {audio.duration():.2f}s")
         time.sleep(audio.duration() + 0.5)
         print("Done.")
         return 0

@@ -166,6 +166,7 @@ class AudioDevice:
         self._mic_thread.start()
 
     def _start_playback_thread(self):
+        frame_delivery_offset = 0.01
         def playback_worker():
             # TODO: allow playback to be at a different rate than the microphone
             stream = self.audio.open(
@@ -184,18 +185,19 @@ class AudioDevice:
                     if timestamp - self.playback_last_frame_time < self.chunk_size / self.rate:
                         timestamp = self.playback_last_frame_time
 
-                    frame_data = AudioData(frames, timestamp=timestamp)
-                    logger.trace(f"Playback Frame: {frame_data.timestamp:.3f} - {frame_data.end_time():.3f}")
-                    self.playback_last_frame_time = frame_data.end_time()
+                    frames_data = AudioData(frames, timestamp=timestamp, channels=self.channels)
+                    logger.trace(f"Playback Frame: {frames_data.timestamp:.3f} - {frames_data.end_time():.3f}")
+                    self.playback_last_frame_time = frames_data.end_time()
                     with self.playback_buffer_lock:
-                        self.playback_buffer.append(frame_data)
+                        self.playback_buffer.append(frames_data)
                         self.playback_buffer.prune_older_than(time.perf_counter() - MAX_PLAYBACK_BUFFER_AGE)
                     stream.write(frames)
 
-                    time_to_next_frame = frame_data.end_time() - time.perf_counter()
-                    sleep_time = max(0, time_to_next_frame - 0.01)
-                    logger.trace(f"Playback Sleep: {sleep_time:.3f} sec")
-                    time.sleep(sleep_time)
+                    time_to_next_frame = frames_data.end_time() - time.perf_counter()
+                    sleep_time = max(0, time_to_next_frame - frame_delivery_offset)
+                    if sleep_time > 0:
+                        logger.trace(f"Playback Sleep: {sleep_time:.3f} sec")
+                        time.sleep(sleep_time)
                 except queue.Empty:
                     continue
             stream.stop_stream()
@@ -398,7 +400,11 @@ class AudioDevice:
             input_bytes = audio_data.as_bytes()
 
             # Mixer only if channel counts differ
-            mixer = ChannelMixer(in_channels, self.channels) if in_channels != self.channels else None
+            if in_channels != self.channels:
+                logger.trace(f"Mixing {in_channels} channels to {self.channels} channels")
+                mixer = ChannelMixer(in_channels, self.channels)
+            else:
+                mixer = None
 
             frames_per_in_chunk = self.chunk_size  # keep frame alignment
             bytes_per_in_chunk = frames_per_in_chunk * in_sample_size * in_channels
@@ -434,7 +440,7 @@ class AudioDevice:
         else:
             raise ValueError("audio_data must be of type AudioData or bytes")
 
-        logger.debug(f"Queued {chunks_queued} chunks for playback")
+        logger.debug(f"Queued {chunks_queued} chunks for playback [{bytes_per_out_chunk} bytes per chunk]")
 
     def stop_playback(self):
         while True:
