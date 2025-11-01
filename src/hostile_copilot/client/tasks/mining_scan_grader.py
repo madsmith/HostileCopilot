@@ -61,7 +61,7 @@ class MiningScanGraderTask(Task):
         
         if scan_grade.total_value >= notify_value:
             msg = f"High Value. {scan_grade.total_value} A.U.E.C. with {best_commodity.value} of {best_commodity.commodity}"
-        elif scan_grade.best_tier >= notify_tier:
+        elif scan_grade.best_tier <= notify_tier:
             msg = f"High Tier. {best_commodity.size} SCU of {best_commodity.commodity}, valued at {best_commodity.value} A.U.E.C."
         else:
             for commodity in scan_grade.commodity_grades:
