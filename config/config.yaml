@@ -24,7 +24,7 @@ app:
   scanning:
     notify_levels:
       value: 500000
-      tier: 3
+      tier: 5
       single_item_value: 300000
 
     notify_tier: 3
@@ -34,6 +34,8 @@ mining_logger:
 
 refineable_mapping:
   "Cobalt (Ore)": "Cobalt"
+  "Hepheastanite (Raw)": "Hephaestanite"
+  "Quantanium (Raw)": "Quantainium"
 
 agent:
   api_key: "${openai.api_key}"
