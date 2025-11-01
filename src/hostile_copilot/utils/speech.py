@@ -4,7 +4,7 @@ Utility functions for converted text to speech (TTS)
 import re
 
 def roundify_numbers(text: str | int | float) -> str:
-    def humanize(num: int) -> str:
+    def humanize(num: float) -> str:
         if num >= 1_000_000_000:  # Billions
             billions = num / 1_000_000_000
             if billions < 10:
@@ -23,12 +23,9 @@ def roundify_numbers(text: str | int | float) -> str:
             else:
                 return f"{round(num/1000)}k"
         return str(num)
-
     def replacer(match):
-        num = int(match.group(0).replace(",", ""))
+        num = float(match.group(0).replace(",", ""))
         return humanize(num)
-
     if isinstance(text, int | float):
         return humanize(text)
-
-    return re.sub(r"\b\d{1,3}(?:,\d{3})+\b|\b\d+\b", replacer, text)
+    return re.sub(r"\b\d{1,3}(?:,\d{3})+(?:\.\d+)?\b|\b\d+(?:\.\d+)?\b", replacer, text)
