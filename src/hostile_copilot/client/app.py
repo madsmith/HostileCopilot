@@ -266,12 +266,12 @@ class HostileCoPilotApp:
         of the object.
         """
         
-        if self._current_location is None:
-            if tool_mode:
-                return "Please specify the current location"
-            else:
-                await self._voice_client.speak("Please specify the current location")
-                return
+        # if self._current_location is None:
+        #     if tool_mode:
+        #         return "Please specify the current location"
+        #     else:
+        #         await self._voice_client.speak("Please specify the current location")
+        #         return
         
         logger.info("Performing scan...")
         task = MiningScanTask(self._config, self._app_config)
@@ -286,8 +286,10 @@ class HostileCoPilotApp:
                 await self._voice_client.speak("No scan data found")
             return
 
-        self._mining_logger.log(scan_result.scan_data)
+        if self._current_location is not None:
+            self._mining_logger.log(scan_result.scan_data)
 
+        logger.debug(f"Scan Data: {scan_result.scan_data}")
         grade_task = MiningScanGraderTask(
             self._config,
             self._app_config,
