@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import logging
 import numpy as np
 import re
 from typing import Any
@@ -8,7 +9,10 @@ from hostile_copilot.config import OmegaConfig
 from hostile_copilot.mining_logger import ScanData
 from hostile_copilot.client.uexcorp import UEXCorpClient
 
-COMMODITY_NAME_REGEXP = re.compile(r"^(.*?)(?:\s(?:\((?:[Rr]aw|[Oo]re)\)|[Oo]re))?$")
+from hostile_copilot.utils.logging import get_trace_logger
+logger = get_trace_logger(__name__)
+
+COMMODITY_NAME_REGEXP = re.compile(r"^(.*?)(?:\s(?:\((?:raw|ore)\)|ore))?$", re.IGNORECASE)
 
 @dataclass
 class CommodityGrade:
@@ -47,8 +51,10 @@ class CommodityGrader:
         for scan_item in scan_data.composition:
             tier = self.get_tier(scan_item.material)
             price = self._get_price(scan_item.material)
-            size = round(scan_item.percentage * scan_data.size, 1)
-            value = round(price * size / 100)
+            logger.debug(f"Percentage: {scan_item.percentage} | Size: {scan_data.size}")
+            size = round(scan_item.percentage * scan_data.size / 100, 1)
+            value = round(price * size)
+            logger.debug(f"Grading {scan_item.material}: {price} * {size} = {value}")
 
             total_value += value
 
@@ -116,15 +122,43 @@ class CommodityGrader:
         self._tier_map = {cluster_labels[i]: i + 1 for i in range(tier_count)}
         self._tier_predictor = kmeans
 
+        # Build tier map for debugging
+        # "tiermap.json" is a JSON file with the following format:
+        # {
+        #   "Tier 1": [
+        #     { name: "commodity_name_1", price: 123456 },
+        #     { name: "commodity_name_2", price: 123456 },
+        #     ...
+        #   ]
+        #   ...
+        # }
+        with open("tiermap.json", "w") as f:
+            data = {}
+            for key, value in self._tier_map.items():
+                data[f"Tier {value}"] = [
+                    {
+                        "name": commodity["name"],
+                        "price": commodity["price_sell"]
+                    }
+                    for commodity in refined_commodities
+                    if self.get_tier(commodity["name"]) == value
+                ]
+            import json
+            json.dump(data, f, indent=2)
+
     
 
     def _get_price(self, commodity: str) -> int:
         refined_commodity = self.refineable_to_refined(commodity)
         
         lookup_commodity = refined_commodity if refined_commodity else commodity
+        logger.trace(f"Input Commodity: {commodity}")
+        logger.trace(f"Refined Commodity: {refined_commodity}")
+        logger.trace(f"Lookup Commodity: {lookup_commodity}")
+        # logger.debug(self._commodities)
 
         for commodity in self._commodities:
-            if commodity["name"] == lookup_commodity:
+            if commodity["name"].lower() == lookup_commodity.lower():
                 return int(commodity["price_sell"])
         
         return 0
