@@ -2,6 +2,8 @@ from pydantic_ai import Agent, BinaryContent
 from pydantic_ai.toolsets import FunctionToolset
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.models.openai import OpenAIModel
+import unicodedata
+import logging
 
 from hostile_copilot.config import OmegaConfig
 
@@ -9,6 +11,7 @@ from .base import Task
 from .bounded_screenshot import BoundedScreenshotTask
 from .types import ScanResponse
 
+logger = logging.getLogger(__name__)
 
 class MiningScanTask(Task):
     def __init__(self, config: OmegaConfig, app_config: OmegaConfig):
@@ -24,6 +27,14 @@ class MiningScanTask(Task):
         return self._scan_result
 
     async def run(self):
+        def to_ascii(s: str) -> str:
+            # Decompose accents, then drop non-ascii
+            return (
+                unicodedata.normalize("NFKD", s)
+                .encode("ascii", "ignore")
+                .decode("ascii")
+            )
+
         self._scan_result = None
 
         coordinates = self._app_config.get("calibration.mining_scan")
@@ -50,6 +61,11 @@ class MiningScanTask(Task):
 
         response = await self._agent.run(prompt)
         data = response.output
+
+        # Normalize responses
+        if data.scan_data is not None:
+            for scan_item in data.scan_data.composition:
+                scan_item.material = to_ascii(scan_item.material.strip())
 
         self._scan_result = data
 
