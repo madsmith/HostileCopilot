@@ -14,7 +14,9 @@ uexcorp:
       cache_expiry: 2592000
     orbits:
       cache_expiry: 2592000
-    
+
+regolith:
+  api_key: "${private.regolith.api_key}"  
 
 app:
   config: "config/settings.yaml"
@@ -28,6 +30,12 @@ app:
       single_item_value: 300000
 
     notify_tier: 3
+
+location_provider:
+  non_navigable_locations: [
+    "Mining Claim #.*",
+    "RMB-.*"
+  ]
 
 mining_logger:
   database_file: "mining_logger.db"

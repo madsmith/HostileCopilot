@@ -17,7 +17,7 @@ from hostile_copilot.client.components import (
     Outpost,
     PointOfInterest,
 )
-
+from hostile_copilot.client.regolith import RegolithClient
 
 async def run_script(args: argparse.Namespace):
     config: OmegaConfig = load_config(args.config)
@@ -38,6 +38,8 @@ async def run_script(args: argparse.Namespace):
         await search_locations(provider)
     elif args.mode == "stem":
         await stem_locations(provider)
+    elif args.mode == "regolith":
+        await regolith_locations(config, provider)
 
 
 async def print_locations(locations: list[LocationType]):
@@ -97,6 +99,31 @@ async def stem_locations(provider: LocationProvider):
     except KeyboardInterrupt:
         pass
 
+async def regolith_locations(config: OmegaConfig, provider: LocationProvider):
+    try:
+        regolith_client = RegolithClient(config)
+
+        while True:
+            search = input("Search (or 'exit' to quit): ")
+            if search.lower() == "exit" or search.lower() == "quit" or search.lower() == "q":
+                break
+
+            locations = await regolith_client.fetch_uex_bodies()
+
+            if search.lower == "compare":
+                locations = await regolith_client.fetch_uex_bodies()
+
+                
+                break
+                
+
+            for location in locations:
+                if search.lower() in location.label.lower():
+                    print(location)
+    except EOFError:
+        pass
+    except KeyboardInterrupt:
+        pass
 def main():
     argparser = argparse.ArgumentParser()
     argparser.add_argument("--config", "-c", help="Path to configuration file", default=None)
@@ -104,7 +131,7 @@ def main():
         "mode", 
         nargs="?", 
         default="print", 
-        choices=["print", "search", "stem"], 
+        choices=["print", "search", "stem", "regolith"], 
         help="Mode to run: 'print' (default)."
     )
     argparser.add_argument("--debug", "-d", help="Enable debug mode", action="store_true")
