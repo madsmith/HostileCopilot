@@ -252,6 +252,8 @@ class HostileCoPilotApp:
                 with anyio.fail_after(self._app_config.get("agent.prompt_timeout", 10)):
                     await self._agent_prompt_future
                 response = self._agent_prompt_future.result()
+                if response == "you":
+                    return None
                 return response
             except TimeoutError:
                 await self._voice_client.speak("Failed trying to get response from user")
