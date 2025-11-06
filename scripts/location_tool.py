@@ -4,9 +4,9 @@ import json
 from typing import Any, Iterable
 
 from hostile_copilot.client.uexcorp import UEXCorpClient
+from hostile_copilot.client.regolith import RegolithClient
 from hostile_copilot.client.components.locations import LocationProvider
 from hostile_copilot.config import OmegaConfig, load_config
-from hostile_copilot.client.uexcorp import BaseLocationID
 from hostile_copilot.client.components import (
     LocationType,
     Planet,
@@ -16,20 +16,21 @@ from hostile_copilot.client.components import (
     Orbits,
     Outpost,
     PointOfInterest,
+    GravityWell,
 )
-from hostile_copilot.client.regolith import RegolithClient
 
 async def run_script(args: argparse.Namespace):
     config: OmegaConfig = load_config(args.config)
 
-    client = UEXCorpClient(config)
-    provider = LocationProvider(config, client)
+    uex_client = UEXCorpClient(config)
+    regolith_client = RegolithClient(config)
+    provider = LocationProvider(config, uex_client, regolith_client)
 
     locations: list[LocationType] = await provider.get_locations()
 
     if args.debug:
         with open("locations.json", "w", encoding="utf-8") as f:
-            payload = {str(k): v.model_dump(mode="json") for k, v in locations.items()}
+            payload = {str(location.id): location.model_dump(mode="json") for location in locations}
             json.dump(payload, f, indent=2, ensure_ascii=False)
     
     if args.mode == "print":
@@ -39,7 +40,9 @@ async def run_script(args: argparse.Namespace):
     elif args.mode == "stem":
         await stem_locations(provider)
     elif args.mode == "regolith":
-        await regolith_locations(config, provider)
+        await regolith_locations(regolith_client)
+    elif args.mode == "dup_check":
+        dup_check(locations)
 
 
 async def print_locations(locations: list[LocationType]):
@@ -48,13 +51,28 @@ async def print_locations(locations: list[LocationType]):
 
 async def search_locations(provider: LocationProvider):
     try:
+        nav_search = False
+        verbose = False
         while True:
             search = input("Search (or 'exit' to quit): ")
             if search.lower() == "exit" or search.lower() == "quit" or search.lower() == "q":
                 break
-            locations = await provider.search(search)
+            if search.lower() == "nav":
+                nav_search = not nav_search
+                print(f"Navigation search: {nav_search}")
+                continue
+            if search.lower() == "verbose":
+                verbose = not verbose
+                print(f"Verbose results: {verbose}")
+                continue
+
+            if nav_search:
+                locations = await provider.get_nav_locations()
+                locations = [loc for loc in locations if search.lower() in loc.name.lower()]
+            else:
+                locations = await provider.search(search)
             for location in locations:
-                print(location)
+                print(location if not verbose else location.__repr__())
     except EOFError:
         pass
     except KeyboardInterrupt:
@@ -99,31 +117,45 @@ async def stem_locations(provider: LocationProvider):
     except KeyboardInterrupt:
         pass
 
-async def regolith_locations(config: OmegaConfig, provider: LocationProvider):
+async def regolith_locations(regolith_client: RegolithClient):
     try:
-        regolith_client = RegolithClient(config)
-
         while True:
             search = input("Search (or 'exit' to quit): ")
             if search.lower() == "exit" or search.lower() == "quit" or search.lower() == "q":
                 break
 
-            locations = await regolith_client.fetch_uex_bodies()
-
-            if search.lower == "compare":
-                locations = await regolith_client.fetch_uex_bodies()
-
-                
-                break
+            locations = await regolith_client.fetch_gravity_wells()
                 
 
             for location in locations:
-                if search.lower() in location.label.lower():
+                if search.lower() in location['label'].lower():
                     print(location)
     except EOFError:
         pass
     except KeyboardInterrupt:
         pass
+
+def dup_check(locations: list[LocationType]):
+    code_lookup = {}
+    for location in locations:
+        if hasattr(location, "code"):
+            code = location.code
+            if code and (code in code_lookup):
+                print(f"Duplicate code: {code}")
+                print(f"    Location: {location}")
+                print(f"    Other: {code_lookup[code]}")
+            else:
+                code_lookup[code] = location
+
+    for location in locations:
+        if hasattr(location, "label"):
+            gw_code = location.id
+            if gw_code in code_lookup:
+                print(f"Duplicate GW code: {gw_code}")
+                print(f"    Location: {location}")
+                print(f"    Other: {code_lookup[gw_code]}")
+            else:
+                code_lookup[gw_code] = location
 def main():
     argparser = argparse.ArgumentParser()
     argparser.add_argument("--config", "-c", help="Path to configuration file", default=None)
@@ -131,7 +163,7 @@ def main():
         "mode", 
         nargs="?", 
         default="print", 
-        choices=["print", "search", "stem", "regolith"], 
+        choices=["print", "search", "stem", "regolith", "dup_check"], 
         help="Mode to run: 'print' (default)."
     )
     argparser.add_argument("--debug", "-d", help="Enable debug mode", action="store_true")

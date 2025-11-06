@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 from hostile_copilot.config import OmegaConfig
-from .types import GravityWell
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +87,7 @@ class RegolithClient:
     # High-level helpers
     #################################################################
 
-    async def fetch_uex_bodies(self) -> list[GravityWell]:
+    async def fetch_gravity_wells(self) -> list[dict[str, Any]]:
         query = (
             """
             query getPublicLookups {
@@ -107,6 +106,6 @@ class RegolithClient:
         # structure: { 'lookups': { 'UEX': { 'bodies': [...] } } }
         try:
             raw_bodies = data["lookups"]["UEX"]["bodies"]
-            return [GravityWell(**item) for item in raw_bodies]
+            return raw_bodies
         except Exception as e:
             raise RegolithException(f"Unexpected response structure: {e}")

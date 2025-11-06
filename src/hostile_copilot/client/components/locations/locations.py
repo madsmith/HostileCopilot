@@ -1,13 +1,17 @@
 import asyncio
+from enum import Enum
+import logging
+import re
 import time
 from typing import Any, Iterable
-from enum import Enum
 
 from hostile_copilot.client.uexcorp import UEXCorpClient, BaseLocationID
+from hostile_copilot.client.regolith import RegolithClient
 from hostile_copilot.config import OmegaConfig
 
 from .types import (
     LocationType,
+    LocationInfo,
     Planet,
     Moon,
     SpaceStation,
@@ -15,7 +19,10 @@ from .types import (
     Outpost,
     PointOfInterest,
     Orbits,
+    GravityWell,
 )
+
+logger = logging.getLogger(__name__)
 
 class LocationValidationResponse(Enum):
     VALID = 0
@@ -27,14 +34,20 @@ class LocationValidationResponse(Enum):
         return self is LocationValidationResponse.VALID
 
 class LocationProvider:
-    def __init__(self, config: OmegaConfig, client: UEXCorpClient):
+    def __init__(self, config: OmegaConfig, client: UEXCorpClient, regolith_client: RegolithClient):
         self._config = config
-        self._client = client
-        self._locations: dict[BaseLocationID, LocationType] = {}
+        self._uex_client = client
+        self._regolith_client = regolith_client
+        self._locations: dict[BaseLocationID, LocationInfo] = {}
         self._location_update_time: int | None = None
         self._lock = asyncio.Lock()
 
-    async def get_locations(self) -> list[LocationType]:
+    async def get_nav_locations(self) -> list[LocationInfo]:
+
+        locations = await self.get_locations()
+        return [loc for loc in locations if loc.is_navigable]
+        
+    async def get_locations(self) -> list[LocationInfo]:
         expiry_time = self._config.get("app.locations.cache_expiry", 24 * 3600)
 
         if self._location_update_time is not None and (time.time() - self._location_update_time) < expiry_time:
@@ -47,7 +60,7 @@ class LocationProvider:
 
         return self._locations.values()
 
-    async def search(self, search_str: str) -> list[LocationType]:
+    async def search(self, search_str: str) -> list[LocationInfo]:
         locations = await self.get_locations()
         search_key = self._normalize_name(search_str)
         
@@ -64,78 +77,133 @@ class LocationProvider:
         else:
             return LocationValidationResponse.INVALID
 
-    async def get_location_stem(self, location: str | LocationType) -> str | None:
+    async def get_location_stem(self, location: str | LocationInfo) -> str | None:
         locations = await self.get_locations()
         if not isinstance(location, str):
             location = location.name
         stem = self._shortest_unique_stem(location, locations)
         return stem
 
-    async def _build_locations(self) -> dict[BaseLocationID, LocationType]:
-        locations: dict[BaseLocationID, LocationType] = {}
+    async def _build_locations(self) -> dict[BaseLocationID, LocationInfo]:
+        locations: dict[BaseLocationID, LocationInfo] = {}
         
-        star_systems = await self._client.fetch_star_systems()
+        star_systems = await self._uex_client.fetch_star_systems()
         valid_star_systems = [star_system for star_system in star_systems if star_system["is_available_live"]]
 
-        locations: dict[BaseLocationID, LocationType] = {}
+        non_navigable_locations = self._config.get("location_provider.uexcorp_non_navigable_locations", [])
+        non_navigable_location_patterns = [re.compile(loc) for loc in non_navigable_locations]
 
+        navigable_locations = self._config.get("location_provider.regolith_navigable_locations", [])
+        navigable_location_patterns = [re.compile(loc) for loc in navigable_locations]
+
+        def is_navigable(location: LocationType, patterns: list[re.Pattern[str]], default: bool = True) -> bool:
+            """
+            Helper function to determine if a location is navigable based on a list of patterns.
+            """
+            if default:
+                return not any(loc.match(location.name) for loc in patterns)
+            else:
+                return any(loc.match(location.name) for loc in patterns)
+            
+        location_infos: dict[BaseLocationID, LocationInfo] = {}
+
+        # First load gravity wells from Regolith
+        gravity_wells: list[dict[str, Any]] = await self._regolith_client.fetch_gravity_wells()
+
+        for gravity_well in gravity_wells:
+            loc = LocationInfo.from_gravity_well(gravity_well)
+            loc.is_navigable = is_navigable(loc, navigable_location_patterns, False)
+            location_infos[loc.id] = loc
+
+            obj = GravityWell(**gravity_well)
+            if obj.id not in locations:
+                # Don't add most gravity wells to the list of nav locations
+                obj.is_navigable = is_navigable(obj, navigable_location_patterns, False)
+                locations[obj.id] = obj
+
+        # Load locations from UEXCorp
         for star_system in valid_star_systems:
-            # Fetch planets
-            planets: list[dict[str, Any]] = await self._client.fetch_planets(star_system["id"])
+            # == Fetch planets ==
+            planets: list[dict[str, Any]] = await self._uex_client.fetch_planets(star_system["id"])
             planets = self._filter_valid(planets)
 
             for planet in planets:
+                loc = LocationInfo.from_planet(planet)
+                location_infos[loc.id] = loc
+
                 obj = Planet(**planet)
                 if obj.id not in locations:
+                    obj.is_navigable = is_navigable(obj, non_navigable_location_patterns, True)
                     locations[obj.id] = obj
 
-            # Fetch moons
-            moons: list[dict[str, Any]] = await self._client.fetch_moons(star_system["id"])
+            # == Fetch moons ==
+            moons: list[dict[str, Any]] = await self._uex_client.fetch_moons(star_system["id"])
             moons = self._filter_valid(moons)
 
             for moon in moons:
+                loc = LocationInfo.from_moon(moon)
+                location_infos[loc.id] = loc
+
                 obj = Moon(**moon)
                 if obj.id not in locations:
+                    obj.is_navigable = is_navigable(obj, non_navigable_location_patterns, True)
                     locations[obj.id] = obj
 
-            # Fetch space stations
-            space_stations: list[dict[str, Any]] = await self._client.fetch_stations(star_system["id"])
+            # == Fetch space stations ==
+            space_stations: list[dict[str, Any]] = await self._uex_client.fetch_stations(star_system["id"])
             space_stations = self._filter_valid(space_stations)
 
             for space_station in space_stations:
+                loc = LocationInfo.from_space_station(space_station)
+                location_infos[loc.id] = loc
+
                 obj = SpaceStation(**space_station)
                 if obj.id not in locations:
+                    obj.is_navigable = is_navigable(obj, non_navigable_location_patterns, True)
                     locations[obj.id] = obj
 
-            # Fetch cities
-            cities: list[dict[str, Any]] = await self._client.fetch_cities(star_system["id"])
+            # == Fetch cities ==
+            cities: list[dict[str, Any]] = await self._uex_client.fetch_cities(star_system["id"])
             cities = self._filter_valid(cities)
 
             for city in cities:
+                loc = LocationInfo.from_city(city)
+                location_infos[loc.id] = loc
+
                 obj = City(**city)
                 if obj.id not in locations:
+                    obj.is_navigable = is_navigable(obj, non_navigable_location_patterns, True)
                     locations[obj.id] = obj
 
-            # Fetch outposts
-            outposts: list[dict[str, Any]] = await self._client.fetch_outposts(star_system["id"])
+            # == Fetch outposts ==
+            outposts: list[dict[str, Any]] = await self._uex_client.fetch_outposts(star_system["id"])
             outposts = self._filter_valid(outposts)
 
             for outpost in outposts:
+                loc = LocationInfo.from_outpost(outpost)
+                location_infos[loc.id] = loc
+
                 obj = Outpost(**outpost)
                 if obj.id not in locations:
+                    obj.is_navigable = is_navigable(obj, non_navigable_location_patterns, True)
                     locations[obj.id] = obj
 
-            # Fetch points of interest
-            points_of_interest: list[dict[str, Any]] = await self._client.fetch_points_of_interest(star_system["id"])
-            points_of_interest = self._filter_valid(points_of_interest)
+            # == Fetch points of interest ==
+            if self._config.get("location_provider.include_points_of_interest", False):
+                points_of_interest: list[dict[str, Any]] = await self._uex_client.fetch_points_of_interest(star_system["id"])
+                points_of_interest = self._filter_valid(points_of_interest)
 
-            for point_of_interest in points_of_interest:
-                obj = PointOfInterest(**point_of_interest)
-                if obj.id not in locations:
-                    locations[obj.id] = obj
+                for point_of_interest in points_of_interest:
+                    loc = LocationInfo.from_point_of_interest(point_of_interest)
+                    location_infos[loc.id] = loc
+
+                    obj = PointOfInterest(**point_of_interest)
+                    if obj.id not in locations:
+                        obj.is_navigable = is_navigable(obj, non_navigable_location_patterns, True)
+                        locations[obj.id] = obj
 
             # Fetch orbits
-            orbits: list[dict[str, Any]] = await self._client.fetch_orbits(star_system["id"])
+            orbits: list[dict[str, Any]] = await self._uex_client.fetch_orbits(star_system["id"])
             orbits = self._filter_valid(orbits)
 
             for orbit in orbits:
@@ -143,9 +211,13 @@ class LocationProvider:
                 if not orbit["is_planet"]:
                     obj = Orbits(**orbit)
                     if obj.id not in locations:
+                        obj.is_navigable = is_navigable(obj, non_navigable_location_patterns, True)
                         locations[obj.id] = obj
-
-        return locations
+        
+        # Fetch Gravity Wells from Regolith
+        gravity_wells: list[dict[str, Any]] = await self._regolith_client.fetch_gravity_wells()
+        
+        return location_infos
     
     def _filter_valid(self, data: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return [
@@ -153,7 +225,7 @@ class LocationProvider:
             if item["is_available_live"] and item["is_available"] and item['is_visible']
         ]
 
-    def _shortest_unique_stem(self, target: str, locations: Iterable[LocationType]) -> str | None:
+    def _shortest_unique_stem(self, target: str, locations: Iterable[LocationInfo]) -> str | None:
         """Return the shortest prefix of `target` that uniquely identifies it among `all_names`.
 
         Comparison is case-insensitive. If no unique prefix exists (e.g., duplicates of the

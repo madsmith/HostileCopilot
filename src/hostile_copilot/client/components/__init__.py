@@ -2,6 +2,7 @@ from .locations import (
     LocationProvider,
     LocationValidationResponse,
     LocationType,
+    LocationInfo,
     Planet,
     Moon,
     SpaceStation,
@@ -9,12 +10,14 @@ from .locations import (
     Orbits,
     Outpost,
     PointOfInterest,
+    GravityWell,
 )
 
 __all__ = [
     "LocationProvider",
     "LocationValidationResponse",
     "LocationType",
+    "LocationInfo",
     "Planet",
     "Moon",
     "SpaceStation",
@@ -22,4 +25,5 @@ __all__ = [
     "Orbits",
     "Outpost",
     "PointOfInterest",
+    "GravityWell",
 ]

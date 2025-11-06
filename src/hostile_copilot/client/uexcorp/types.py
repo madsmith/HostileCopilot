@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Literal, TypeAlias
 
 @dataclass(frozen=True, slots=True)
 class BaseLocationID:
@@ -55,3 +56,18 @@ class OrbitsID(BaseLocationID):
         object.__setattr__(self, "value", value)
         object.__setattr__(self, "namespace", "orbits")
 
+class GravityWellID(BaseLocationID):
+    def __init__(self, value: str):
+        object.__setattr__(self, "value", value)
+        object.__setattr__(self, "namespace", "gravity_well")
+
+UEXType: TypeAlias = Literal[
+    "star_system",
+    "planet",
+    "moon",
+    "space_station",
+    "city",
+    "outpost",
+    "point_of_interest",
+    "orbits",
+]

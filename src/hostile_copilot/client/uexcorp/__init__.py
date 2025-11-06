@@ -9,6 +9,8 @@ from .types import (
     OutpostID,
     PointOfInterestID,
     OrbitsID,
+    GravityWellID,
+    UEXType,
 )
 
 __all__ = [
@@ -24,4 +26,6 @@ __all__ = [
     "OutpostID",
     "PointOfInterestID",
     "OrbitsID",
+    "GravityWellID",
+    "UEXType",
 ]

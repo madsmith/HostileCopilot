@@ -8,6 +8,8 @@ from .types import (
     Orbits,
     Outpost,
     PointOfInterest,
+    GravityWell,
+    LocationInfo,
 )
 
 __all__ = [
@@ -21,4 +23,6 @@ __all__ = [
     "Orbits",
     "Outpost",
     "PointOfInterest",
+    "GravityWell",
+    "LocationInfo",
 ]

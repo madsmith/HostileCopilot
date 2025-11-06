@@ -32,9 +32,15 @@ app:
     notify_tier: 3
 
 location_provider:
-  non_navigable_locations: [
+  uexcorp_non_navigable_locations: [
     "Mining Claim #.*",
-    "RMB-.*"
+    "RMB-.*",
+    ".*\\(Star\\)",
+    ".*Jump Point"
+  ]
+  regolith_navigable_locations: [
+    "Cluster.*",
+    "RAB-.*"
   ]
 
 mining_logger:
