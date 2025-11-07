@@ -55,3 +55,4 @@ locations.json
 test_files/*_to_*.wav
 test_files/*_resampled_*.wav
 tiermap.json
+regolith_bodies.json
