@@ -1,8 +1,8 @@
 from pydantic import BaseModel, Field, model_validator, field_validator
 from typing import Annotated, Any, Callable, cast, ClassVar, Generic, get_args, Literal, TypeAlias, TypeVar, Union
 
-from hostile_copilot.client.uexcorp.types import BaseLocationID
-from hostile_copilot.client.uexcorp.types import (
+from hostile_copilot.client.uexcorp.custom_types import (
+    BaseLocationID,
     PlanetID,
     MoonID,
     SpaceStationID,
