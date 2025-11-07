@@ -7,7 +7,7 @@ from hostile_copilot.client.uexcorp.types import (
     MoonID,
     SpaceStationID,
     CityID,
-    OrbitsID,
+    OrbitID,
     OutpostID,
     PointOfInterestID,
     GravityWellID,
@@ -56,9 +56,9 @@ class City(Location[CityID]):
     kind: Literal["city"] = "city"
     id_factory = CityID
 
-class Orbits(Location[OrbitsID]):
+class Orbits(Location[OrbitID]):
     kind: Literal["orbits"] = "orbits"
-    id_factory = OrbitsID
+    id_factory = OrbitID
 
 class Outpost(Location[OutpostID]):
     kind: Literal["outpost"] = "outpost"
@@ -147,7 +147,7 @@ class LocationInfo(BaseModel):
     parent_code: str | None = Field(default=None, repr=False)
     ancestor_codes: list[str] | None = Field(default=None, repr=False)
 
-    raw_data: dict[str, Any] | None = Field(default=None, repr=False)
+    raw_data: dict[str, Any] | list[dict[str, Any]] | None = Field(default=None, repr=False)
 
     def __str__(self):
         return f"{self.name} [{self.id} / {self.code}] ({self.kind})"
@@ -297,10 +297,34 @@ class LocationInfo(BaseModel):
         )
 
     @classmethod
+    def from_orbit(cls, data: dict[str, Any]) -> "LocationInfo":
+        name = data.get("name")
+        assert name is not None
+
+        aliases = []
+        name_origin = data.get("name_origin")
+        if name_origin and name_origin != name:
+            aliases.append(name_origin)
+
+        uex_id = OrbitID(data['id'])
+
+        return cls(
+            kind="orbit",
+            name=name,
+            aliases=aliases,
+            id=uex_id,
+            uex_id=uex_id,
+            uex_type="orbit",
+            code=data.get("code"),
+            is_gravity_well=False,
+            gravity_well_type=None,
+            raw_data=data
+        )
+
+    @classmethod
     def from_gravity_well(cls, data: dict[str, Any]) -> "LocationInfo":
         name = data.get("label")
         assert name is not None
-
 
         regolith_id = GravityWellID(data['id'])
 

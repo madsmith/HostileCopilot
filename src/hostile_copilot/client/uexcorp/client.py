@@ -8,7 +8,7 @@ from urllib.parse import urljoin
 
 from hostile_copilot.config import OmegaConfig
 
-from .types import StarSystemID
+from .custom_types import StarSystemID
 
 logger = logging.getLogger(__name__)
 

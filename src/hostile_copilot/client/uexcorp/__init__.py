@@ -1,5 +1,5 @@
 from .client import UEXCorpClient, UEXCorpException, UEXCorpAPIException
-from .types import (
+from .custom_types import (
     BaseLocationID,
     StarSystemID,
     PlanetID,
@@ -8,7 +8,7 @@ from .types import (
     CityID,
     OutpostID,
     PointOfInterestID,
-    OrbitsID,
+    OrbitID,
     GravityWellID,
     UEXType,
 )
@@ -25,7 +25,7 @@ __all__ = [
     "CityID",
     "OutpostID",
     "PointOfInterestID",
-    "OrbitsID",
+    "OrbitID",
     "GravityWellID",
     "UEXType",
 ]

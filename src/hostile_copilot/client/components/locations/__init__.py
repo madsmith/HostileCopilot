@@ -1,5 +1,5 @@
 from .locations import LocationProvider, LocationValidationResponse
-from .types import (
+from .custom_types import (
     LocationType,
     Planet,
     Moon,

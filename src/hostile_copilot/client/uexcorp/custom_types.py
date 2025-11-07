@@ -51,7 +51,7 @@ class PointOfInterestID(BaseLocationID):
         object.__setattr__(self, "value", value)
         object.__setattr__(self, "namespace", "point_of_interest")
 
-class OrbitsID(BaseLocationID):
+class OrbitID(BaseLocationID):
     def __init__(self, value: int):
         object.__setattr__(self, "value", value)
         object.__setattr__(self, "namespace", "orbits")
