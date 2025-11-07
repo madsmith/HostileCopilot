@@ -24,6 +24,7 @@ ROMAN_MAP = {
 }
 
 ENGLISH_MAP = {
+    "zero":         0,
     "one":          1,
     "two":          2,
     "three":        3,
@@ -48,36 +49,46 @@ ENGLISH_MAP = {
 
 ROMAN_RE = re.compile(r"\b(?:" + "|".join(sorted(ROMAN_MAP.keys(), key=len, reverse=True)) + r")\b")
 ENGLISH_RE = re.compile(r"\b(?:" + "|".join(sorted(ENGLISH_MAP.keys(), key=len, reverse=True)) + r")\b", re.IGNORECASE)
-NUMBER_RE = re.compile(r"\b(?:" + "|".join(map(str, range(1, 21))) + r")\b")
+NUMBER_RE = re.compile(r"\b(?:" + "|".join(map(str, range(0, 21))) + r")\b")
 
 def _fn_replace_roman_numeral(match: re.Match[str]) -> str:
     roman_numeral = match.group(0).upper()
     replacement = ROMAN_MAP.get(roman_numeral, roman_numeral)
-    return f" *#{replacement}#* "
+    return f" ⟦{replacement}⟧ "
 
 def _fn_replace_english_numeral(match: re.Match[str]) -> str:
     english_number = match.group(0)
     lower_english_number = english_number.lower()
     replacement = ENGLISH_MAP.get(lower_english_number, lower_english_number)
-    return f" *#{replacement}#* "
+    return f" ⟦{replacement}⟧ "
 
 def _fn_replace_number(match: re.Match[str]) -> str:
     number = match.group(0)
-    return f" *#{number}#* "
+    return f" ⟦{number}⟧ "
     
+def _separate_letter_digits(str: str) -> str:
+    left_to_right = re.sub(r"([a-zA-Z])(\d)", r"\1 \2", str)
+    right_to_left = re.sub(r"(\d)([a-zA-Z])", r"\1 \2", left_to_right)
+    return right_to_left
+
 def normalize_name(name: str | None) -> str:
     if name is None:
         return ""
     
-    number_normalized = NUMBER_RE.sub(_fn_replace_number, name)
+    letter_digit_separated = _separate_letter_digits(name)
+    
+    dehyphenated = re.sub(r"-", " ", letter_digit_separated)
 
+    # Normalize numbers into distinct tokens
+    number_normalized = NUMBER_RE.sub(_fn_replace_number, dehyphenated)
     roman_normalized = ROMAN_RE.sub(_fn_replace_roman_numeral, number_normalized)
-
     english_normalized = ENGLISH_RE.sub(_fn_replace_english_numeral, roman_normalized)
 
     # Remove redundant spaces and boundary separators like '-'
-    boundary_separated = re.sub(r"-\s*\*", " *", english_normalized)
-    space_consolidated = re.sub(r"\s+", " ", boundary_separated)
+    boundary_separated = re.sub(r"-\s*⟦", " ⟦", english_normalized)
+    deapostrophized = re.sub(r"\'", "", boundary_separated)
+    conjunction_spelled_out = re.sub(r"\b&\b", "and", deapostrophized)
+    space_consolidated = re.sub(r"\s+", " ", conjunction_spelled_out)
     
     return space_consolidated.strip().lower()
 
@@ -102,8 +113,9 @@ if __name__ == "__main__":
         "The Moon-1",
         "Shubin Processing Facility SPAL-3",
         "SAL-2",
-        "Arccorp Mining Area 141S",
+        "Arccorp Mining Area 141",
         "Shubin Mining Facility SM0-10",
+        "Shubin Mining Facility SM0-",
         "Farro Datacenter X",
         "Lazarus Transport Hub Tithonus-III",
         "Pyro IV", "Pyro 4",
