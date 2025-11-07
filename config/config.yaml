@@ -152,7 +152,9 @@ stt-local:
 
 stt-openai:
   model_id: "gpt-4o-mini-transcribe"
-  prompt: "You are Mining Logger, please transcribe the question asked by the user to you."
+  prompt: |
+    You are Mining Logger, please transcribe the question asked by the user to you. Here are some unique
+    words you may encounter: Shubin, Lyria, SAL, PAF, RMB, RAB, Quantainium, Hephaestanite.
 
 openwakeword:
   inference_framework: "onnx"
