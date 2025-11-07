@@ -107,7 +107,8 @@ def run(config_path: Optional[str]):
             # Allow loop to be interruptible
             time.sleep(0.0)
     finally:
-        audio.shutdown()
+        #audio.shutdown()
+        pass
 
 
 if __name__ == "__main__":
