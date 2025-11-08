@@ -8,6 +8,7 @@ from pydantic_ai.toolsets import FunctionToolset
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.models.openai import OpenAIModel
 import pyaudio
+import time
 from typing import Any
 
 from hostile_copilot.client.tasks.ping_analysis import PingAnalysisResult
@@ -72,6 +73,7 @@ class HostileCoPilotApp:
         self._agent: Agent | None = None
         self._calibration_agent: Agent | None = None
         self._calibration_lock: asyncio.Lock = asyncio.Lock()
+        self._copilot_agent: Agent | None = None
 
         self._is_running: bool = False
 
@@ -79,6 +81,8 @@ class HostileCoPilotApp:
         self._current_location: str | None = None
         self._agent_prompt_lock: asyncio.Lock = asyncio.Lock()
         self._agent_prompt_future: asyncio.Future | None = None
+        self._prompt_tool_calls: int = 0
+        self._last_prompt_time: float = 0.0
 
 
     async def initialize(self):
@@ -120,8 +124,16 @@ class HostileCoPilotApp:
             model_name=model_id,
         )
 
+        copilot_model_id = self._config.get("copilot.model_id")
+        copilot_system_prompt = self._config.get("copilot.system_prompt", "")
+        copilot_model = OpenAIModel(
+            provider=provider,
+            model_name=copilot_model_id,
+        )
+
         # Tool registration
         toolset = FunctionToolset(tools=[
+            self._tool_search_gravity_well_locations,
             self._tool_set_gravity_well_location,
             self._tool_search_navigation_locations,
             self._prompt_user_for_input,
@@ -131,6 +143,7 @@ class HostileCoPilotApp:
         copilot_toolset = FunctionToolset(tools=[
             self._prompt_user_for_input,
             self._tool_set_gravity_well_location,
+            self._tool_search_gravity_well_locations,
             self._tool_search_navigation_locations,
             self._tool_set_navigation_route,
             self._tool_get_commodity_data,
@@ -156,8 +169,8 @@ class HostileCoPilotApp:
         )
 
         self._copilot_agent = Agent(
-            model=model,
-            system_prompt=system_prompt,
+            model=copilot_model,
+            system_prompt=copilot_system_prompt,
             toolsets=[copilot_toolset],
         )
     
@@ -208,7 +221,17 @@ class HostileCoPilotApp:
 
         elif wake_word == "agent_prompt":
             if self._agent_prompt_future is not None and not self._agent_prompt_future.done():
-                self._agent_prompt_future.set_result(prompt)
+                cleaned = prompt.strip()
+                norm = cleaned.lower()
+                cancel_phrases = {"cancel", "nevermind", "never mind", "stop", "abort", "exit"}
+                if norm in cancel_phrases:
+                    self._agent_prompt_future.set_result("__CANCEL__")
+                    return
+                alnum = "".join(ch for ch in cleaned if ch.isalnum())
+                min_chars = int(self._app_config.get("agent.stt_min_chars", 2))
+                if len(alnum) < min_chars:
+                    return
+                self._agent_prompt_future.set_result(cleaned)
             else:
                 logger.warning("Received agent_prompt but no pending prompt future")
 
@@ -242,26 +265,38 @@ class HostileCoPilotApp:
         """
 
         async with self._agent_prompt_lock:
+            now = time.monotonic()
+            cooldown = float(self._app_config.get("agent.prompt_cooldown", 10.0))
+            if now - self._last_prompt_time > cooldown:
+                self._prompt_tool_calls = 0
+            self._last_prompt_time = now
+
+            self._prompt_tool_calls += 1
+            max_calls = int(self._app_config.get("agent.max_prompt_tool_calls", 3))
+            if self._prompt_tool_calls > max_calls:
+                await self._voice_client.speak("Cancelling prompt.", wait_for_completion=True)
+                self._prompt_tool_calls = 0
+                return None
+
             await self._voice_client.speak(prompt, wait_for_completion=True)
 
-            # Create a fresh future to capture the user's spoken response
             self._agent_prompt_future = asyncio.get_event_loop().create_future()
-
-            # Start recording and route the recognized text back via wake_word == "agent_prompt"
             self._voice_client.start_recording(confirmed=True, wake_word="agent_prompt")
 
             try:
                 with anyio.fail_after(self._app_config.get("agent.prompt_timeout", 10)):
                     await self._agent_prompt_future
                 response = self._agent_prompt_future.result()
-                if response == "you":
+                if response in {"__CANCEL__", "you"} or response is None:
+                    self._prompt_tool_calls = 0
                     return None
+                self._prompt_tool_calls = 0
                 return response
             except TimeoutError:
                 await self._voice_client.speak("Failed trying to get response from user")
+                self._prompt_tool_calls = 0
                 raise RuntimeError("Failed trying to get response from user")
             finally:
-                # Cleanup so stray agent_prompt events don't hit a stale future
                 self._agent_prompt_future = None
 
     async def _tool_perform_scan(self, tool_mode = True) -> ScanResponse | str | None:
@@ -361,6 +396,19 @@ class HostileCoPilotApp:
                 success=False,
                 message=f"Location {location} not found."
             )
+    
+    async def _tool_search_gravity_well_locations(self, search_string: str) -> list[str]:
+        """
+        Search for gravity well locations that can be recorded for mining.
+
+        Args:
+            search_string (str): The search string to use.
+
+        Returns:
+            list[str]: A list of location names matching the search string.
+        """
+        locations = await self._location_provider.search(search_string, gravity_well=True)
+        return [location.name for location in locations]
     
     async def _tool_search_navigation_locations(self, search_string: str) -> list[str]:
         """
