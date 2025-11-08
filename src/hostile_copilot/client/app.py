@@ -120,7 +120,7 @@ class HostileCoPilotApp:
 
         # Tool registration
         toolset = FunctionToolset(tools=[
-            self._tool_set_current_location,
+            self._tool_set_gravity_well_location,
             self._tool_search_locations,
             self._prompt_user_for_input,
             self._tool_get_commodity_data,
@@ -128,7 +128,7 @@ class HostileCoPilotApp:
 
         copilot_toolset = FunctionToolset(tools=[
             self._prompt_user_for_input,
-            self._tool_set_current_location,
+            self._tool_set_gravity_well_location,
             self._tool_search_locations,
             self._tool_set_navigation_route,
             self._tool_get_commodity_data,
@@ -334,14 +334,14 @@ class HostileCoPilotApp:
         
         return ping_result
 
-    async def _tool_set_current_location(self, location: str) -> SetLocationResponse:
+    async def _tool_set_gravity_well_location(self, location: str) -> SetLocationResponse:
         """
-        Set the current location
+        Set the current location to the gravity well in which mining activity is occuring.
 
         Args:
-            location (str): The current location of the mining ship.
+            location (str): The name of the gravity well.
         """
-        matches = await self._location_provider.search(location)
+        matches = await self._location_provider.search(location, gravity_well=True)
 
         if len(matches) == 1:
             self._current_location = matches[0].name
@@ -362,7 +362,7 @@ class HostileCoPilotApp:
     
     async def _tool_search_locations(self, search_string: str) -> list[str]:
         """
-        Search for locations matching the specified search string
+        Search for navigable locations matching the specified search string
 
         Args:
             search_string (str): The search string to use.
@@ -370,7 +370,7 @@ class HostileCoPilotApp:
         Returns:
             list[str]: A list of location names matching the search string.
         """
-        locations = await self._location_provider.search(search_string)
+        locations = await self._location_provider.search(search_string, navigable=True)
         return [location.name for location in locations]
 
     async def _tool_set_navigation_route(self, destination: str) -> NavSetRouteResponse:
@@ -378,7 +378,7 @@ class HostileCoPilotApp:
         Set a navigation route to the specified destination.
         """
 
-        matches = await self._location_provider.search(destination)
+        matches = await self._location_provider.search(destination, navigable=True)
 
         if len(matches) > 1:
             return NavSetRouteResponse(

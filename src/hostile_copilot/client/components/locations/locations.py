@@ -5,7 +5,7 @@ import re
 import time
 from typing import Any, get_args, Iterable
 
-from hostile_copilot.client.uexcorp import UEXCorpClient, BaseLocationID
+from hostile_copilot.client.uexcorp import UEXCorpClient, BaseLocationID, GravityWellID
 from hostile_copilot.client.regolith import RegolithClient
 from hostile_copilot.config import OmegaConfig
 
@@ -64,9 +64,15 @@ class LocationProvider:
 
         return self._locations.values()
 
-    async def search(self, search_str: str) -> list[LocationInfo]:
+    async def search(self, search_str: str, gravity_well: bool = False, navigable: bool = False) -> list[LocationInfo]:
         locations = await self.get_locations()
         search_key = normalize_name(search_str)
+
+        if gravity_well:
+            locations = [loc for loc in locations if loc.is_gravity_well]
+
+        if navigable:
+            locations = [loc for loc in locations if loc.is_navigable]
         
         candidates = [
             loc
@@ -220,26 +226,42 @@ class LocationProvider:
         cleaned_locations: LocationsDict = {}
 
         processed_codes = set()
+        processed_ids = set()
 
         for location in location_infos.values():
             # Already processed
             if location.code:
-                if location.code not in processed_codes:
-                    merged_location = self._merge_locations(location_infos, location)
+                if location.code not in processed_codes and location.id not in processed_ids:
+                    merged_location, processed_locations = self._merge_locations(location_infos, location)
                     cleaned_locations[merged_location.id] = merged_location
                     processed_codes.add(location.code)
+                    processed_ids.update(loc.id for loc in processed_locations)
             else:
-                cleaned_locations[location.id] = location
+                if location.id not in processed_ids:
+                    cleaned_locations[location.id] = location
+                    processed_ids.add(location.id)
 
         return cleaned_locations
 
-    def _merge_locations(self, location_infos: LocationsDict, location: LocationInfo) -> LocationInfo:
-        matching_locations = [loc for loc in location_infos.values() if loc.code == location.code]
+    def _merge_locations(self, location_infos: LocationsDict, location: LocationInfo) -> tuple[LocationInfo, list[LocationInfo]]:
+        matching_locations = [
+            loc 
+            for loc in location_infos.values()
+            if (location.code == loc.code) or
+               (loc.aliases is not None and location.code in loc.aliases)
+        ]
+
+        preferred_name = next(
+            (loc.name for loc in matching_locations if not isinstance(loc.id, GravityWellID)),
+            None,
+        )
+
+        name = preferred_name or location.name
 
         aliases = list({
             alias
-            for loc in matching_locations if loc.aliases is not None
-            for alias in loc.aliases if alias != location.name
+            for loc in matching_locations 
+            for alias in (loc.aliases or []) + [loc.name] if alias != name
         })
 
         UEXTYPE_SET = set(get_args(UEXType))
@@ -259,7 +281,7 @@ class LocationProvider:
 
         return LocationInfo(
             kind=location.kind,
-            name=location.name,
+            name=name,
             aliases=aliases,
             id=location.id,
             uex_id=uex_id,
@@ -273,7 +295,7 @@ class LocationProvider:
             has_gems=has_gems,
             has_rocks=has_rocks,
             raw_data=raw_data
-        )
+        ), matching_locations
     
     def _filter_valid(self, data: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return [

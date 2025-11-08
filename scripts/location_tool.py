@@ -53,6 +53,8 @@ async def search_locations(provider: LocationProvider):
     try:
         nav_search = False
         verbose = False
+        gravity_well = False
+
         while True:
             search = input("Search (or 'exit' to quit): ")
             if search.lower() == "exit" or search.lower() == "quit" or search.lower() == "q":
@@ -65,12 +67,16 @@ async def search_locations(provider: LocationProvider):
                 verbose = not verbose
                 print(f"Verbose results: {verbose}")
                 continue
+            if search.lower() == "gravity_well" or search.lower() == "gravity":
+                gravity_well = not gravity_well
+                print(f"Gravity well search: {gravity_well}")
+                continue
 
             if nav_search:
                 locations = await provider.get_nav_locations()
                 locations = [loc for loc in locations if search.lower() in loc.name.lower()]
             else:
-                locations = await provider.search(search)
+                locations = await provider.search(search, gravity_well=gravity_well)
             for location in locations:
                 print(location if not verbose else location.__repr__())
     except EOFError:
