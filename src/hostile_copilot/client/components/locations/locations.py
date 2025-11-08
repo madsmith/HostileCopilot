@@ -317,12 +317,13 @@ class LocationProvider:
             The shortest unique prefix (stem) of `target`, or None if uniqueness is impossible.
         """
         target_normalized = normalize_name(target)
+        target_lower = target.lower()
 
         # Build the comparison list excluding the exact same string (case-insensitive) instances
         names = [
-            normalized_name
+            loc.name.lower()
             for loc in locations
-            if loc.name is not None and (normalized_name := normalize_name(loc.name)) != target_normalized
+            if loc.name is not None and normalize_name(loc.name) != target_normalized
         ]
 
         # Consider collisions at ANY word boundary in compared names, not just the very start.
@@ -337,13 +338,13 @@ class LocationProvider:
             return False
 
         # If any other entry starts with the prefix at ANY word boundary, it's not unique yet.
-        for i in range(1, len(target_normalized) + 1):
-            prefix = target_normalized[:i]
+        for i in range(1, len(target_lower) + 1):
+            prefix = target_lower[:i]
             if not any(any_word_prefix(name, prefix) for name in names):
                 return prefix
 
         # Check if the full target itself is unique as a prefix at any word boundary
-        if not any(any_word_prefix(name, target_normalized) for name in names):
-            return target_normalized
+        if not any(any_word_prefix(name, target_lower) for name in names):
+            return target_lower
 
         return None
