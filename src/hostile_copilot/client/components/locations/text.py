@@ -90,8 +90,11 @@ def normalize_name(name: str | None) -> str:
     conjunction_spelled_out = re.sub(r"&", "∧", deapostrophized)
     and_spelled_out = re.sub(r" and ", " ∧ ", conjunction_spelled_out)
     space_consolidated = re.sub(r"\s+", " ", and_spelled_out)
+
+    # Strip spaces from the entire string
+    space_stripped = re.sub(r"\s+", "", space_consolidated)
     
-    return space_consolidated.strip().lower()
+    return space_stripped.lower()
 
 
 
