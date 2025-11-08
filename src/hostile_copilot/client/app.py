@@ -16,6 +16,7 @@ from hostile_copilot.audio import AudioDevice
 from hostile_copilot.utils.input.keyboard import Keyboard
 from hostile_copilot.utils.speech import roundify_numbers
 from hostile_copilot.client.uexcorp import UEXCorpClient
+from hostile_copilot.client.regolith import RegolithClient
 from hostile_copilot.mining_logger import MiningLogger
 from hostile_copilot.client.components.locations import LocationProvider
 
@@ -60,10 +61,11 @@ class HostileCoPilotApp:
         self._voice_task: asyncio.Task | None = None
 
         self._uexcorp_client: UEXCorpClient = UEXCorpClient(self._config)
+        self._regolith_client: RegolithClient = RegolithClient(self._config)
 
         self._mining_logger: MiningLogger = MiningLogger(self._config)
         self._commodity_grader: CommodityGrader = CommodityGrader(self._config)
-        self._location_provider: LocationProvider = LocationProvider(self._config, self._uexcorp_client)
+        self._location_provider: LocationProvider = LocationProvider(self._config, self._uexcorp_client, self._regolith_client)
 
         self._keyboard = Keyboard()
 
@@ -121,7 +123,7 @@ class HostileCoPilotApp:
         # Tool registration
         toolset = FunctionToolset(tools=[
             self._tool_set_gravity_well_location,
-            self._tool_search_locations,
+            self._tool_search_navigation_locations,
             self._prompt_user_for_input,
             self._tool_get_commodity_data,
         ])
@@ -129,7 +131,7 @@ class HostileCoPilotApp:
         copilot_toolset = FunctionToolset(tools=[
             self._prompt_user_for_input,
             self._tool_set_gravity_well_location,
-            self._tool_search_locations,
+            self._tool_search_navigation_locations,
             self._tool_set_navigation_route,
             self._tool_get_commodity_data,
         ])
@@ -360,9 +362,10 @@ class HostileCoPilotApp:
                 message=f"Location {location} not found."
             )
     
-    async def _tool_search_locations(self, search_string: str) -> list[str]:
+    async def _tool_search_navigation_locations(self, search_string: str) -> list[str]:
         """
-        Search for navigable locations matching the specified search string
+        Search for locations that can be navigated to.  This is a distinct list separate from
+        gravity well locations that can be recorded for mining.
 
         Args:
             search_string (str): The search string to use.
