@@ -87,8 +87,9 @@ def normalize_name(name: str | None) -> str:
     # Remove redundant spaces and boundary separators like '-'
     boundary_separated = re.sub(r"-\s*⟦", " ⟦", english_normalized)
     deapostrophized = re.sub(r"\'", "", boundary_separated)
-    conjunction_spelled_out = re.sub(r"\b&\b", "and", deapostrophized)
-    space_consolidated = re.sub(r"\s+", " ", conjunction_spelled_out)
+    conjunction_spelled_out = re.sub(r"&", "∧", deapostrophized)
+    and_spelled_out = re.sub(r" and ", " ∧ ", conjunction_spelled_out)
+    space_consolidated = re.sub(r"\s+", " ", and_spelled_out)
     
     return space_consolidated.strip().lower()
 
@@ -119,6 +120,7 @@ if __name__ == "__main__":
         "Farro Datacenter X",
         "Lazarus Transport Hub Tithonus-III",
         "Pyro IV", "Pyro 4",
+        "Dudley & Daughters", "HDSF-Millerand",
         None,
         "",
     ]
