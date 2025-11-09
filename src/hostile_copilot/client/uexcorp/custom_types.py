@@ -3,11 +3,8 @@ from typing import Literal, TypeAlias
 
 @dataclass(frozen=True, slots=True)
 class BaseLocationID:
-    value: int
+    value: int | str
     namespace: str
-
-    def __int__(self) -> int:
-        return self.value
 
     def __str__(self) -> str:
         return f"{self.namespace}:{self.value}"
