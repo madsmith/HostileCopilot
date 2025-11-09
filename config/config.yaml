@@ -32,6 +32,11 @@ app:
     notify_tier: 3
 
 location_provider:
+  cleanup_rules:
+    - pattern: 'area\s+([0-9]+)'
+      replacement: 'area\1'
+      flags: ['IGNORECASE']
+    
   uexcorp_non_navigable_locations: [
     "Mining Claim #.*",
     "RMB-.*",

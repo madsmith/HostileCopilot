@@ -1,4 +1,10 @@
+import logging
 import re
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+from hostile_copilot.config import OmegaConfig, load_config
 
 ROMAN_MAP = {
     "I":            1,
@@ -96,9 +102,64 @@ def normalize_name(name: str | None) -> str:
     
     return space_stripped.lower()
 
+class CanonicalNameProcessor:
+    FLAG_MAP = {
+        "IGNORECASE": re.IGNORECASE,
+        "MULTILINE": re.MULTILINE,
+        "DOTALL": re.DOTALL,
+        "VERBOSE": re.VERBOSE,
+        "UNICODE": re.UNICODE,
+    }
 
+    def __init__(self, config: OmegaConfig | None = None):
+        self._config = config
+        self._rules: list[dict[str, Any]] = []
+
+        if config is not None:
+            self._rules = config.get("location_provider.cleanup_rules", [])
+
+    def process(self, name: str | None) -> str:
+        if name is None:
+            return ""
+
+        output = self._apply_rules(name)
+        return output
+        
+    def _apply_rules(self, name: str) -> str:
+        output = name
+        
+        for rule in self._rules:
+            print(rule)
+            pattern = rule.get("pattern", None)
+            replacement = rule.get("replacement", None)
+
+            if pattern is None:
+                logger.warning(f"Invalid rule: {rule} - missing pattern")
+                continue
+
+            if replacement is None:
+                logger.warning(f"Invalid rule: {rule} - missing replacement")
+                continue
+            
+            flags_list = rule.get("flags", [])
+            flags = 0
+            for flag in flags_list:
+                flags |= getattr(re, flag)
+            
+            output = re.sub(pattern, replacement, output, flags=flags)
+        
+        return output
+   
+def canonical_name(name: str | None) -> str:
+    name_lower = name.lower()
+    processor = CanonicalNameProcessor()
+    return processor.process(name_lower)
 
 if __name__ == "__main__":
+    config: OmegaConfig = load_config()
+
+    processor = CanonicalNameProcessor(config)
+    
     def check(name: str):
         print(f"\"{name}\" -> \"{normalize_name(name)}\"")
     
@@ -130,3 +191,14 @@ if __name__ == "__main__":
 
     for name in names:
         check(name)
+
+    def check_canonical(name: str):
+        canonical_name = processor.process(name)
+        print(f"\"{name}\" -> \"{canonical_name}\"")
+
+    canonical_names = [
+        "Area 18"
+    ]
+
+    for name in canonical_names:
+        check_canonical(name)
