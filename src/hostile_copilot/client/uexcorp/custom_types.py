@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Literal, TypeAlias
+from typing import Any, Literal, TypeAlias
 
 @dataclass(frozen=True, slots=True)
 class BaseLocationID:
@@ -12,6 +12,12 @@ class BaseLocationID:
     def __repr__(self) -> str:
         classname = self.__class__.__name__
         return f"{classname}({self.value})"
+
+    def __eq__(self, other: Any) -> bool:
+        if isinstance(other, BaseLocationID):
+            return self.value == other.value and self.namespace == other.namespace
+        else:
+            return self.value == other
 
 class StarSystemID(BaseLocationID):
     def __init__(self, value: int):
