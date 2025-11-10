@@ -9,7 +9,7 @@ from hostile_copilot.client.uexcorp import UEXCorpClient, BaseLocationID, Gravit
 from hostile_copilot.client.regolith import RegolithClient
 from hostile_copilot.config import OmegaConfig
 
-from .text import CanonicalNameProcessor, normalize_name
+from .text import CanonicalNameProcessor, NormalizedName
 from .custom_types import (
     LocationType,
     LocationInfo,
@@ -68,7 +68,8 @@ class LocationProvider:
 
     async def search(self, search_str: str, gravity_well: bool = False, navigable: bool = False) -> list[LocationInfo]:
         locations = await self.get_locations()
-        search_key = normalize_name(search_str)
+
+        search_key = NormalizedName(search_str)
 
         if gravity_well:
             locations = [loc for loc in locations if loc.is_gravity_well]
@@ -80,9 +81,9 @@ class LocationProvider:
             loc
             for loc in locations
             if (
-                search_key in normalize_name(loc.name)
-                or (search_key in normalize_name(loc.code) if loc.code is not None else False)
-                or any(search_key in normalize_name(alias) for alias in loc.aliases if loc.aliases is not None)
+                search_key.matches(loc.name)
+                or (search_key.matches(loc.code) if loc.code is not None else False)
+                or any(search_key.matches(alias) for alias in loc.aliases if loc.aliases is not None)
             )
         ]
         return candidates
@@ -318,14 +319,14 @@ class LocationProvider:
         Returns:
             The shortest unique prefix (stem) of `target`, or None if uniqueness is impossible.
         """
-        target_normalized = normalize_name(target)
+        search_key = NormalizedName(target)
         target_canonical = self._canonical_name_processor.process(target)
 
         # Build the comparison list excluding the exact same string (case-insensitive) instances
         names = [
             self._canonical_name_processor.process(loc.name)
             for loc in locations
-            if loc.name is not None and normalize_name(loc.name) != target_normalized
+            if loc.name is not None and not search_key.matches(loc.name)
         ]
 
         # Consider collisions at ANY word boundary in compared names, not just the very start.

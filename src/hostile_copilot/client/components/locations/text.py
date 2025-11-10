@@ -53,54 +53,174 @@ ENGLISH_MAP = {
     "twenty":       20,
 }
 
+IS_ROMAN_NUMERAL = re.compile(r"^M{0,4}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$")
+IS_ALPHA_NUM_CODE = re.compile(r"^(?=.*[A-Z])(?=.*\d)[A-Z0-9]+$")
+IS_ALPHA_NUM_CODE_SPLIT = re.compile(r"(?<=\d)(?=[A-Z])|(?<=[A-Z])(?=\d)")
+IS_ALPHA_UPPER = re.compile(r"^[A-Z]+$")
+TOKEN_SEPARATORS = re.compile(r"[-\s,.#()]")
+
 ROMAN_RE = re.compile(r"\b(?:" + "|".join(sorted(ROMAN_MAP.keys(), key=len, reverse=True)) + r")\b")
 ENGLISH_RE = re.compile(r"\b(?:" + "|".join(sorted(ENGLISH_MAP.keys(), key=len, reverse=True)) + r")\b", re.IGNORECASE)
 NUMBER_RE = re.compile(r"\b(?:" + "|".join(map(str, range(0, 21))) + r")\b")
+NUMBER_RE = re.compile(r"\b\d+\b")
 
-def _fn_replace_roman_numeral(match: re.Match[str]) -> str:
-    roman_numeral = match.group(0).upper()
-    replacement = ROMAN_MAP.get(roman_numeral, roman_numeral)
-    return f" ⟦{replacement}⟧ "
+def roman_to_int(s: str) -> int:
+    roman = {
+        'I': 1,
+        'V': 5,
+        'X': 10,
+        'L': 50,
+        'C': 100,
+        'D': 500,
+        'M': 1000,
+    }
 
-def _fn_replace_english_numeral(match: re.Match[str]) -> str:
-    english_number = match.group(0)
-    lower_english_number = english_number.lower()
-    replacement = ENGLISH_MAP.get(lower_english_number, lower_english_number)
-    return f" ⟦{replacement}⟧ "
+    total = 0
+    prev_value = 0
 
-def _fn_replace_number(match: re.Match[str]) -> str:
-    number = match.group(0)
-    return f" ⟦{number}⟧ "
+    for ch in reversed(s.upper()):
+        value = roman[ch]
+        if value < prev_value:
+            total -= value
+        else:
+            total += value
+        prev_value = value
+
+    return total
+
+
+#################################################
+# Tokenization
+#################################################
+
+class Token:
+    def __init__(self, value: Any):
+        self.value = value
     
-def _separate_letter_digits(str: str) -> str:
-    left_to_right = re.sub(r"([a-zA-Z])(\d)", r"\1 \2", str)
-    right_to_left = re.sub(r"(\d)([a-zA-Z])", r"\1 \2", left_to_right)
-    return right_to_left
+    def re_fragment(self) -> str:
+        return str(self.value)
 
-def normalize_name(name: str | None) -> str:
-    if name is None:
-        return ""
+    def target_value(self) -> str:
+        return str(self.value)
+
+    def __eq__(self, other: Any) -> bool:
+        return self.value == other.value
+
+class StringToken(Token):
+    def __init__(self, value: str):
+        super().__init__(value)
     
-    letter_digit_separated = _separate_letter_digits(name)
+    def re_fragment(self) -> str:
+        return f"(?i:{self.value})"
     
-    dehyphenated = re.sub(r"-", " ", letter_digit_separated)
+    def __str__(self):
+        return self.value
 
-    # Normalize numbers into distinct tokens
-    number_normalized = NUMBER_RE.sub(_fn_replace_number, dehyphenated)
-    roman_normalized = ROMAN_RE.sub(_fn_replace_roman_numeral, number_normalized)
-    english_normalized = ENGLISH_RE.sub(_fn_replace_english_numeral, roman_normalized)
+    def __repr__(self):
+        return f"StringToken({self.value})"
 
-    # Remove redundant spaces and boundary separators like '-'
-    boundary_separated = re.sub(r"-\s*⟦", " ⟦", english_normalized)
-    deapostrophized = re.sub(r"\'", "", boundary_separated)
-    conjunction_spelled_out = re.sub(r"&", "∧", deapostrophized)
-    and_spelled_out = re.sub(r" and ", " ∧ ", conjunction_spelled_out)
-    space_consolidated = re.sub(r"\s+", " ", and_spelled_out)
-
-    # Strip spaces from the entire string
-    space_stripped = re.sub(r"\s+", "", space_consolidated)
+class RomanNumeralToken(Token):
+    def __init__(self, value: str):
+        super().__init__(value)
+        self._int_value = roman_to_int(value)
     
-    return space_stripped.lower()
+    def re_fragment(self) -> str:
+        return f"(?:{self._int_value}|{self.value})"
+    
+    def target_value(self) -> str:
+        return str(self._int_value)
+    
+    def __str__(self):
+        return f"⟦{self.value}⟧"
+    
+    def __repr__(self):
+        return f"RomanNumeralToken({self.value})"
+
+class NumberToken(Token):
+    def __init__(self, value: int | str):
+        super().__init__(value)
+    
+    def __str__(self):
+        return f"⟦{self.value}⟧"
+
+    def __repr__(self):
+        return f"NumberToken({self.value})"
+
+class CodeToken(Token):
+    def __init__(self, value: str):
+        super().__init__(value)
+    
+    def re_fragment(self) -> str:
+        return f"(?i:{self.value})"
+    
+    def is_alpha(self) -> bool:
+        return self.value.isalpha()
+    
+    def is_numeric(self) -> bool:
+        return self.value.isnumeric()
+    
+    def __str__(self):
+        return f"‹{self.value}›"
+    
+    def __repr__(self):
+        return f"CodeToken({self.value})"
+
+class NormalizedName:
+    def __init__(self, name: str):
+        self._name = name
+        self._tokens: list[Token] = []
+
+        self._tokenize()
+
+    def _tokenize(self):
+        tokens = re.split(TOKEN_SEPARATORS, self._name)
+        for token in tokens:
+            if token == "":
+                continue
+
+            if IS_ROMAN_NUMERAL.match(token):
+                self._tokens.append(RomanNumeralToken(token))
+            
+            elif ENGLISH_RE.match(token):
+                english_number = token.lower()
+                value = ENGLISH_MAP.get(english_number)
+                if value is None:
+                    logger.warning(f"Unknown English number: {english_number}")
+                else:
+                    self._tokens.append(NumberToken(value))
+            
+            elif NUMBER_RE.match(token):
+                self._tokens.append(NumberToken(token))
+            
+            elif IS_ALPHA_NUM_CODE.match(token):
+                code_tokens = re.split(IS_ALPHA_NUM_CODE_SPLIT, token)
+                for code_token in code_tokens:
+                    self._tokens.append(CodeToken(code_token))
+            elif IS_ALPHA_UPPER.match(token) and len(token) == 1:
+                self._tokens.append(CodeToken(token))
+            else:
+                lower = token.lower()
+
+                if token in ['&', 'and']:
+                    self._tokens.append(StringToken("∧"))
+                else:
+                    no_apostrophes = re.sub(r"\'", "", lower)
+                    self._tokens.append(StringToken(no_apostrophes))
+
+    def matches(self, other: str) -> bool:
+        other_name = NormalizedName(other)
+
+        match_target = "".join([token.target_value() for token in other_name._tokens])
+
+        search_re_str = r".*".join([token.re_fragment() for token in self._tokens])
+        search_re = re.compile(search_re_str, re.IGNORECASE)
+
+        # logger.debug(f"Searching for {search_re_str} in {match_target}")
+        # logger.debug(f"   Tokens: {self._tokens}")
+        # logger.debug(f"   Other Tokens: {other_name._tokens}")
+        # logger.debug(f"Result: {search_re.search(match_target)}")
+
+        return search_re.search(match_target) is not None
 
 class CanonicalNameProcessor:
     FLAG_MAP = {
@@ -129,7 +249,6 @@ class CanonicalNameProcessor:
         output = name
         
         for rule in self._rules:
-            print(rule)
             pattern = rule.get("pattern", None)
             replacement = rule.get("replacement", None)
 
@@ -159,38 +278,9 @@ if __name__ == "__main__":
     config: OmegaConfig = load_config()
 
     processor = CanonicalNameProcessor(config)
-    
-    def check(name: str):
-        print(f"\"{name}\" -> \"{normalize_name(name)}\"")
-    
-    names = [
-        "The Moon",
-        "The Moon X",
-        "The Moon-XIX",
-        "The Moon One",
-        "The Moon One-XIX",
-        "The Moon four",
-        "ARC-L1",
-        "RAB-ION",
-        "RUPTURA PAF-II",
-        "Operations Depot Lyria-1",
-        "Greycat Stanton IV Production Complex",
-        "The Moon-1",
-        "Shubin Processing Facility SPAL-3",
-        "SAL-2",
-        "Arccorp Mining Area 141",
-        "Shubin Mining Facility SM0-10",
-        "Shubin Mining Facility SM0-",
-        "Farro Datacenter X",
-        "Lazarus Transport Hub Tithonus-III",
-        "Pyro IV", "Pyro 4",
-        "Dudley & Daughters", "HDSF-Millerand",
-        None,
-        "",
-    ]
 
-    for name in names:
-        check(name)
+    # Name normalization
+    # Moved to test suite tests/client/components/test_locations.py
 
     def check_canonical(name: str):
         canonical_name = processor.process(name)
