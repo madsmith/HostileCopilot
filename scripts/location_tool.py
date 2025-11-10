@@ -19,6 +19,7 @@ from hostile_copilot.client.components import (
     PointOfInterest,
     GravityWell,
 )
+from hostile_copilot.client.uexcorp import GravityWellID
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ async def run_script(args: argparse.Namespace):
     elif args.mode == "regolith":
         await regolith_locations(regolith_client)
     elif args.mode == "dup_check":
-        dup_check(locations)
+        await dup_check(provider)
 
 
 async def print_locations(locations: list[LocationType]):
@@ -147,7 +148,9 @@ async def regolith_locations(regolith_client: RegolithClient):
     except KeyboardInterrupt:
         pass
 
-def dup_check(locations: list[LocationType]):
+async def dup_check(provider: LocationProvider):
+    locations = await provider.get_locations()
+
     code_lookup = {}
     for location in locations:
         if hasattr(location, "code"):
@@ -168,6 +171,34 @@ def dup_check(locations: list[LocationType]):
                 print(f"    Other: {code_lookup[gw_code]}")
             else:
                 code_lookup[gw_code] = location
+
+    print("General name dup check")
+    for location in locations:
+        name = location.name
+
+        matches = await provider.search(name)
+        if len(matches) > 1:
+            print(f"Multiple matches for {name}")
+            for match in matches:
+                print(f"     {repr(match)}")
+
+                
+    print("UEX Dup Check -> Regolith Gravity Well")
+    for location in locations:
+        if isinstance(location.id, GravityWellID):
+            continue
+
+        name = location.name
+
+        matches = await provider.search(name)
+        regolith_matches = [match for match in matches if isinstance(match.id, GravityWellID)]
+
+        if len(regolith_matches) > 0:
+            print(f"Multiple matches for {name}")
+            print(f"     {repr(location)}")
+            for match in regolith_matches:
+                print(f"     {repr(match)}")
+        
 def main():
     argparser = argparse.ArgumentParser()
     argparser.add_argument("--config", "-c", help="Path to configuration file", default=None)

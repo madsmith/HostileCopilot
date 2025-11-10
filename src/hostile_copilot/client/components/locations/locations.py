@@ -5,7 +5,13 @@ import re
 import time
 from typing import Any, get_args, Iterable
 
-from hostile_copilot.client.uexcorp import UEXCorpClient, BaseLocationID, GravityWellID
+from hostile_copilot.client.uexcorp import (
+    UEXCorpClient,
+    BaseLocationID,
+    SpaceStationID,
+    GravityWellID,
+    OutpostID,
+)
 from hostile_copilot.client.regolith import RegolithClient
 from hostile_copilot.config import OmegaConfig
 
@@ -192,6 +198,10 @@ class LocationProvider:
                 if loc.id not in location_infos:
                     location_infos[loc.id] = loc
 
+            def has_matching_outpost_by_name(name: str) -> bool:
+                search_key = NormalizedName(name)
+                return any(search_key.matches(loc.name) for loc in location_infos.values() if isinstance(loc.id, OutpostID))
+
             # == Fetch points of interest ==
             if self._config.get("location_provider.include_points_of_interest", True):
                 points_of_interest: list[dict[str, Any]] = await self._uex_client.fetch_points_of_interest(star_system["id"])
@@ -201,7 +211,7 @@ class LocationProvider:
                     loc = LocationInfo.from_point_of_interest(point_of_interest)
                     loc.is_navigable = is_navigable(loc, non_navigable_location_patterns, True)
 
-                    if loc.id not in location_infos:
+                    if loc.id not in location_infos and not has_matching_outpost_by_name(loc.name):
                         location_infos[loc.id] = loc
 
             # == Fetch orbits ==
@@ -254,6 +264,27 @@ class LocationProvider:
                (loc.aliases is not None and location.code in loc.aliases)
         ]
 
+        # Force merge UEX Space stations against Regolith Gravity Wells
+        # We're processing Regolith first, so only do this if the current location is
+        # a gravity well and see if there's a space station matching it
+        if isinstance(location.id, GravityWellID):
+            space_stations = [loc for loc in location_infos.values() if isinstance(loc.id, SpaceStationID)]
+            for station in space_stations:
+                search_key = NormalizedName(station.name)
+                if search_key.matches(location.name):
+                    matching_locations.append(station)
+
+        # Remove POI
+        # Check merge list
+        merge_list = self._config.get("location_provider.merge_list", [])
+        location_id_str = str(location.id)
+        for merge_group in merge_list:
+            if location_id_str in merge_group:
+                print(f"Found merge group: {merge_group}")
+                other_ids = [entry for entry in merge_group if entry != location_id_str]
+                additional_locations = [loc for loc in location_infos.values() if str(loc.id) in other_ids]
+                matching_locations.extend(additional_locations)
+
         preferred_name = next(
             (loc.name for loc in matching_locations if not isinstance(loc.id, GravityWellID)),
             None,
@@ -301,9 +332,14 @@ class LocationProvider:
         ), matching_locations
     
     def _filter_valid(self, data: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        show_quantum_missing = self._config.get("location_provider.show_quantum_missing", False)
+
+        def qt_filter(item: dict[str, Any]) -> bool:
+            return show_quantum_missing or item.get("has_quantum_marker", True)
+            
         return [
             item for item in data
-            if item["is_available_live"] and item["is_available"] and item['is_visible']
+            if item["is_available_live"] and item["is_available"] and item['is_visible'] and qt_filter(item)
         ]
 
     def _shortest_unique_stem(self, target: str, locations: Iterable[LocationInfo]) -> str | None:

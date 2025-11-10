@@ -1,4 +1,5 @@
 from .locations import LocationProvider, LocationValidationResponse
+from .text import NormalizedName
 from .custom_types import (
     LocationType,
     Planet,
@@ -16,6 +17,7 @@ __all__ = [
     "LocationType",
     "LocationProvider",
     "LocationValidationResponse",
+    "NormalizedName",
     "Planet",
     "Moon",
     "SpaceStation",

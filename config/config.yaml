@@ -36,6 +36,8 @@ location_provider:
     - pattern: 'area\s+([0-9]+)'
       replacement: 'area\1'
       flags: ['IGNORECASE']
+
+  merge_list: []
     
   uexcorp_non_navigable_locations: [
     "Mining Claim #.*",
