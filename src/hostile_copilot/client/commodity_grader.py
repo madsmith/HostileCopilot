@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-import logging
+from difflib import get_close_matches
 import numpy as np
 import re
 from typing import Any
@@ -35,7 +35,6 @@ class CommodityGrader:
         self._tier_map: dict[str, int] = {}
         self._tier_predictor: KMeans | None = None
 
-
     async def initialize(self, uexcorp_client: UEXCorpClient):
         self._commodities = await uexcorp_client.fetch_commodities()
         self._initialize_tier_map()
@@ -49,12 +48,13 @@ class CommodityGrader:
 
         total_value = 0
         for scan_item in scan_data.composition:
-            tier = self.get_tier(scan_item.material)
-            price = self._get_price(scan_item.material)
+            material = self.identify_commodity(scan_item.material)
+            tier = self.get_tier(material)
+            price = self._get_price(material)
             logger.debug(f"Percentage: {scan_item.percentage} | Size: {scan_data.size}")
             size = round(scan_item.percentage * scan_data.size / 100, 1)
             value = round(price * size)
-            logger.debug(f"Grading {scan_item.material}: {price} * {size} = {value}")
+            logger.debug(f"Grading {material}: {price} * {size} = {value}")
 
             total_value += value
 
@@ -72,7 +72,21 @@ class CommodityGrader:
         scan_grade.best_tier = min(scan_grade.commodity_grades, key=lambda x: x.tier).tier
 
         return scan_grade
-            
+
+    def identify_commodity(self, commodity_name: str) -> str:
+        logger.trace(f"Identifying commodity: {commodity_name}")
+        refined_commodity = self.refineable_to_refined(commodity_name)
+
+        known_commodities = [commodity["name"].title() for commodity in self._commodities]
+
+        search_commodity = refined_commodity.title()
+        close_matches = get_close_matches(search_commodity, known_commodities, cutoff=0.8)
+        if close_matches:
+            logger.trace(f"Close matches: {close_matches}")
+            return close_matches[0]
+
+        logger.debug(f"Could not identify commodity: {refined_commodity}")
+        return f"Unknown [{refined_commodity}]"
 
     def get_tier(self, commodity: str) -> int:
         assert self._tier_predictor is not None, "Tier predictor is not initialized"
@@ -94,6 +108,7 @@ class CommodityGrader:
 
         match = COMMODITY_NAME_REGEXP.match(name)
         if not match:
+            logger.warning(f"Could not identify commodity: {name}")
             return None
         
         return match.group(1)
@@ -132,7 +147,14 @@ class CommodityGrader:
         #   ]
         #   ...
         # }
-        with open("tiermap.json", "w") as f:
+
+    def save_tier_map(self, path: str | None = None):
+        if path is None:
+            path = "tiermap.json"
+
+        refined_commodities = [commodity for commodity in self._commodities if commodity["is_refined"]]
+
+        with open(path, "w") as f:
             data = {}
             for key, value in self._tier_map.items():
                 data[f"Tier {value}"] = [
@@ -145,8 +167,6 @@ class CommodityGrader:
                 ]
             import json
             json.dump(data, f, indent=2)
-
-    
 
     def _get_price(self, commodity: str) -> int:
         refined_commodity = self.refineable_to_refined(commodity)
