@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import json
+import logging
 from typing import Any, Iterable
 
 from hostile_copilot.client.uexcorp import UEXCorpClient
@@ -19,6 +20,8 @@ from hostile_copilot.client.components import (
     GravityWell,
 )
 
+logger = logging.getLogger(__name__)
+
 async def run_script(args: argparse.Namespace):
     config: OmegaConfig = load_config(args.config)
 
@@ -32,6 +35,9 @@ async def run_script(args: argparse.Namespace):
         with open("locations.json", "w", encoding="utf-8") as f:
             payload = {str(location.id): location.model_dump(mode="json") for location in locations}
             json.dump(payload, f, indent=2, ensure_ascii=False)
+
+    if args.verbose:
+        logging.basicConfig(level=logging.DEBUG)
     
     if args.mode == "print":
         await print_locations(locations)
@@ -173,6 +179,7 @@ def main():
         help="Mode to run: 'print' (default)."
     )
     argparser.add_argument("--debug", "-d", help="Enable debug mode", action="store_true")
+    argparser.add_argument("--verbose", "-v", help="Enable verbose mode", action="store_true")
     
     args = argparser.parse_args()
 
