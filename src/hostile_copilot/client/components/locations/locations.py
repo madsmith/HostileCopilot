@@ -1,4 +1,5 @@
 import asyncio
+from difflib import SequenceMatcher
 from enum import Enum
 import logging
 import re
@@ -92,6 +93,15 @@ class LocationProvider:
                 or any(search_key.matches(alias) for alias in loc.aliases if loc.aliases is not None)
             )
         ]
+
+        # Rank candidates by canonical name similarity
+        target_name = self._canonical_name_processor.process(search_str)
+        def rank_candidate(candidate: LocationInfo) -> float:
+            canonical_name = self._canonical_name_processor.process(candidate.name)
+            return SequenceMatcher(None, target_name, canonical_name).ratio()
+        
+        candidates.sort(key=rank_candidate, reverse=True)
+        
         return candidates
     
     async def is_valid_location(self, location: str) -> LocationValidationResponse:

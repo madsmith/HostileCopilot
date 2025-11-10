@@ -91,3 +91,28 @@ class TestLocationProvider:
         assert result.id == 87
         assert result.name == "Microtech Logistics Depot S4LD01"
         assert 'S4LD01' in result.aliases
+
+    @pytest.mark.asyncio
+    async def test_search_ranking(self, provider: LocationProvider):
+        results = await provider.search("Point")
+        assert len(results) > 0
+        assert len(results) == 6
+
+        result = results[0]
+        assert result.id == 6 or result.id == 64
+        assert result.name == "Baijini Point" or result.name == "Maker's Point"
+
+        results = await provider.search("POINT")
+        assert len(results) > 0
+        assert len(results) == 6
+
+        result = results[0]
+        assert result.id == "RAB-POINT"
+
+        results = await provider.search("point")
+        assert len(results) > 0
+        assert len(results) == 6
+
+        result = results[0]
+        assert result.id == 61
+        assert result.name == "Harper's Point"
