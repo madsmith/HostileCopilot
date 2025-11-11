@@ -99,6 +99,7 @@ class HostileCoPilotApp:
 
         logger.info("Initializing CommodityGrader...")
         await self._commodity_grader.initialize(self._uexcorp_client)
+        self._commodity_grader.save_tier_map("tiermap.json")
 
         logger.info("Initializing Keyboard...")
         await self._keyboard.start()
@@ -313,7 +314,10 @@ class HostileCoPilotApp:
         #         return
         
         logger.info("Performing scan...")
-        task = MiningScanTask(self._config, self._app_config)
+        task = MiningScanTask(
+            self._config,
+            self._app_config,
+            self._commodity_grader)
         await task.run()
         logger.info("Scan complete")
 

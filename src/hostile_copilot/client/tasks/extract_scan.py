@@ -6,17 +6,25 @@ import unicodedata
 import logging
 
 from hostile_copilot.config import OmegaConfig
+from hostile_copilot.client.commodity_grader import CommodityGrader
 
 from .base import Task
 from .bounded_screenshot import BoundedScreenshotTask
 from .types import ScanResponse
 
+
 logger = logging.getLogger(__name__)
 
 class MiningScanTask(Task):
-    def __init__(self, config: OmegaConfig, app_config: OmegaConfig):
+    def __init__(
+        self,
+        config: OmegaConfig,
+        app_config: OmegaConfig,
+        commodity_grader: CommodityGrader
+    ):
         super().__init__(config)
         self._app_config = app_config
+        self._commodity_grader = commodity_grader
 
         self._agent = self._construct_agent()
 
@@ -60,14 +68,23 @@ class MiningScanTask(Task):
         ]
 
         response = await self._agent.run(prompt)
-        data = response.output
+        scan_response = response.output
 
         # Normalize responses
-        if data.scan_data is not None:
-            for scan_item in data.scan_data.composition:
-                scan_item.material = to_ascii(scan_item.material.strip())
+        if scan_response.scan_data is not None:
+            for scan_item in scan_response.scan_data.composition:
+                material = self._commodity_grader.identify_commodity(scan_item.material)
+                scan_item.material = material
 
-        self._scan_result = data
+        self._scan_result = scan_response
+
+    def _clean_scan_data(self, scan_response: ScanResponse) -> ScanResponse:
+        if scan_response.scan_data is None:
+            return scan_response
+
+        
+
+
 
     def _construct_agent(self) -> Agent[None, ScanResponse]:
         api_key = self._config.get("mining_scan_agent.api_key", "")
