@@ -39,6 +39,7 @@ class BoundedScreenshotTask(Task):
             self._image.save(save_path / "screenshot.png")
 
         if self._config.get("app.screenshots.archive", False):
-            unique_naame = Path(save_path / "archive" / "screenshot_" + time.strftime("%Y%m%d_%H%M%S") + ".png")
+            time_str = time.strftime("%Y%m%d_%H%M%S")
+            unique_naame = Path(save_path / "archive" / f"screenshot_{time_str}.png")
             unique_naame.parent.mkdir(parents=True, exist_ok=True)
             self._image.save(unique_naame)
