@@ -16,6 +16,8 @@ class BaseLocationID:
     def __eq__(self, other: Any) -> bool:
         if isinstance(other, BaseLocationID):
             return self.value == other.value and self.namespace == other.namespace
+        elif isinstance(other, str):
+            return str(self) == other or self.value == other
         else:
             return self.value == other
 
