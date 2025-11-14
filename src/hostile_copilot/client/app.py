@@ -85,14 +85,15 @@ class HostileCoPilotApp:
         self._last_prompt_time: float = 0.0
 
 
-    async def initialize(self):
+    async def initialize(self, listen: bool = True):
         logger.info("Initializing HostileCoPilotApp...")
 
-        logger.info("Initializing AudioDevice...")
-        self._audio_device.initialize()
+        if listen:
+            logger.info("Initializing AudioDevice...")
+            self._audio_device.initialize()
 
-        logger.info("Initializing VoiceClient...")
-        await self._voice_client.initialize()
+            logger.info("Initializing VoiceClient...")
+            await self._voice_client.initialize()
 
         logger.info("Initializing MiningLogger...")
         self._mining_logger.initialize()
@@ -107,10 +108,12 @@ class HostileCoPilotApp:
         logger.info("Initializing Agent...")
         await self.initialize_agents()
 
-        self._voice_client.on_prompt(self._on_prompt)
-        self._voice_client.on_immediate_activation(self._on_immediate_activation)
+        if listen:
+            self._voice_client.on_prompt(self._on_prompt)
+            self._voice_client.on_immediate_activation(self._on_immediate_activation)
 
-        self._audio_device.start()
+            self._audio_device.start()
+            
         logger.info("HostileCoPilotApp initialized")
 
     async def initialize_agents(self):
