@@ -53,6 +53,8 @@ class MacroTask(Task):
                 logger.warning(f"Invalid macro step: {step}")
                 continue
 
+            if isinstance(args, tuple):
+                args = list(args)
             if not isinstance(args, list):
                 args = [args]
 
@@ -64,7 +66,7 @@ class MacroTask(Task):
                 logger.debug(f"Executing keyboard action: {action}")
                 await handler(self._keyboard, *args, **kwargs)
             elif action in pyautogui.__dict__:
-                logger.debug(f"Executing pyautogui action: {action}")
+                logger.debug(f"Executing pyautogui action: {action} with args: {args} and kwargs: {kwargs}")
                 getattr(pyautogui, action)(*args, **kwargs)
             else:
                 logger.warning(f"Invalid macro action: {action}")
