@@ -32,6 +32,7 @@ class TestNormalizedName:
             ("Shubin Mining Facility SM0-10", "shubin sm010"),
             ("Pyro IV", "Pyro 4"),
             ("Pyro 4", "pyro IV"),
+            ("World's End", "World's End"),
         ],
     )
     def test_matches_true(self, base: str, query: str):
@@ -116,3 +117,30 @@ class TestLocationProvider:
         result = results[0]
         assert result.id == 61
         assert result.name == "Harper's Point"
+
+
+    @pytest.mark.parametrize(
+        "query, id",
+        [
+            ("World's End", "?")
+        ]
+    )
+    @pytest.mark.asyncio
+    async def test_search_parameterized(self, provider: LocationProvider, query: str, id: str):
+        results = await provider.search(query)
+        assert len(results) > 0
+
+        result = results[0]
+        assert result.id == id
+    
+    @pytest.mark.parametrize(
+        "query, match",
+        [
+            ("RUIN STATION", "space_station:45")
+        ]
+    )
+    @pytest.mark.asyncio
+    async def test_identify_location(self, provider: LocationProvider, query: str, match: str):
+        result = await provider.identify_location(query)
+        assert result is not None
+        assert result.id == match
