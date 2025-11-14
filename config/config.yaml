@@ -195,6 +195,10 @@ ping_analysis_agent:
     1820: "Quartzite",
     1730: "Shale"
   }
+  debug: true
+  debug_path: "screenshots/ping_analysis"
+
+
     
 
 # Text-to-Speech settings

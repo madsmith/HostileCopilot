@@ -1,9 +1,13 @@
 from dataclasses import dataclass
+import json
 import logging
 from pydantic_ai import Agent, BinaryContent
 from pydantic_ai.toolsets import FunctionToolset
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.models.openai import OpenAIModel
+from uuid import uuid4
+from pathlib import Path
+from PIL.Image import Image
 
 from hostile_copilot.config import OmegaConfig
 
@@ -65,7 +69,19 @@ class PingAnalysisTask(Task):
         data = response.output
 
         self._ping_result = data
+
+        if self._config.get("ping_analysis_agent.debug", False):
+            self._save_debug_data(task.image, data)
         pass
+
+    def _save_debug_data(self, image: Image, data: PingResponse):
+        save_path = Path(self._config.get("ping_analysis_agent.debug_path", "screenshots/ping_analysis"))
+        save_path.mkdir(parents=True, exist_ok=True)
+        uuid = str(uuid4())
+        image.save(save_path / f"{uuid}.png")
+
+        with open(save_path / f"{uuid}.json", "w") as f:
+            json.dump(data.model_dump(), f)
 
     def _construct_agent(self) -> Agent[None, PingResponse]:
         api_key = self._config.get("ping_analysis_agent.api_key", "")
@@ -78,7 +94,6 @@ class PingAnalysisTask(Task):
             provider=provider,
             model_name=model_id,
         )
-
 
         agent = Agent[None, PingResponse](
             model=model,
