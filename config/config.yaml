@@ -22,6 +22,7 @@ app:
   config: "config/settings.yaml"
   screenshots:
     debug: true
+    archive: true
     path: "screenshots"
   scanning:
     notify_levels:
@@ -104,7 +105,53 @@ mining_scan_agent:
       }
     - If difficulty is missing in the scan, return "Unknown". 
     - Difficulty must be one of: Easy, Medium, Hard, Impossible, Unknown.
-    
+
+location_extraction_agent:
+  api_key: "${openai.api_key}"
+  model_id: "gpt-4o-mini"
+  legend_path: "resources/images/nav_legend.png"
+  legend_identifier: 'legend.png'
+  system_prompt: |
+    You are an image-analysis assistant.
+    Your job is to extract Star Citizen location entries from any image you are given.
+
+    Each entry in the image consists of:
+
+    - An icon, which identifies the location type.
+    - A name, which is the text next to the icon.
+
+    Some entries may be highlighted but please process all entries from top to bottom. 
+    You will be provided with a legend (identifier 'legend.png') that maps each icon to 
+    one of the following location types:
+
+    - Space Station
+    - Point of Interest
+    - City
+    - Planet
+    - Moon
+    - Asteroid Cluster
+
+    For every image the user sends after this prompt:
+
+    1. Identify each list item in the screenshot.
+    2. Read the location name exactly as written.
+    3. Determine the location type by matching the icon to the legend (identifier 'legend.png') provided in this prompt.
+    4. Output only a JSON array. Each element must have:
+      - "name" — the location name
+      - "type" — one of: "Space Station", "Point of Interest", "City", "Planet", "Moon", "Asteroid Cluster"
+
+    You must reply only with a JSON array like this:
+
+    [
+      { "name": "Example Name", "type": "Planet" },
+      { "name": "Another Name", "type": "City" }
+    ]
+
+    Do not include distances, formatting, commentary, explanations, or text outside the JSON array.
+  instructions: |
+    Extract a list of location names and types from this image.  Return the data in the
+    an array `locations` with each entry a JSON object with `name` and `type` fields."
+
 ping_analysis_agent:
   api_key: "${openai.api_key}"
   model_id: "gpt-4o-mini"
@@ -138,7 +185,15 @@ ping_analysis_agent:
     1850: "Asteroid M-Type",
     1870: "Asteroid Q-Type",
     1900: "Asteroid E-Type",
-    2000: "Salvage Panels"
+    2000: "Salvage Panels",
+    1800: "Atacamite",
+    1770: "Felsic",
+    1840: "Gneiss",
+    1920: "Granite",
+    1950: "Igneous",
+    1790: "Obsidian",
+    1820: "Quartzite",
+    1730: "Shale"
   }
     
 

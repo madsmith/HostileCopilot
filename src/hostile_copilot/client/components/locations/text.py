@@ -222,6 +222,12 @@ class NormalizedName:
 
         return search_re.search(match_target) is not None
 
+    def target_value(self) -> str:
+        return "".join([token.target_value() for token in self._tokens])
+    
+    def __str__(self):
+        return "".join([str(token) for token in self._tokens])
+
 class CanonicalNameProcessor:
     FLAG_MAP = {
         "IGNORECASE": re.IGNORECASE,

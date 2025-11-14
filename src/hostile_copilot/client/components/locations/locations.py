@@ -1,5 +1,5 @@
 import asyncio
-from difflib import SequenceMatcher
+from difflib import SequenceMatcher, get_close_matches
 from enum import Enum
 import logging
 import re
@@ -72,6 +72,43 @@ class LocationProvider:
             self._location_update_time = time.time()
 
         return self._locations.values()
+
+    async def identify_location(self, location_name: str) -> LocationInfo | None:
+        locations = await self.get_locations()
+
+        def name_matches(loc: LocationInfo, name: str) -> bool:
+            name_key = NormalizedName(name).target_value()
+            name_match = NormalizedName(loc.name).target_value() == name_key
+            alias_match = any(NormalizedName(alias).target_value() == name_key for alias in loc.aliases)
+            code_match = loc.code == name
+            has_match = name_match or alias_match or code_match
+            if has_match:
+                logger.debug(f"Name match: {name_match}, alias match: {alias_match}, code match: {code_match} | {loc.name} | {name}")
+            return has_match
+            # return (
+            #     loc.name == name or
+            #     any(alias == name for alias in loc.aliases) or
+            #     (loc.code == name)
+            # )
+
+        # Build a list of all location names and aliases
+        location_names = [loc.name for loc in locations]
+        location_aliases = [alias for loc in locations for alias in loc.aliases]
+        location_codes = [loc.code for loc in locations if loc.code is not None]
+        location_names.extend(location_aliases)
+        location_names.extend(location_codes)
+
+        search_candidates = [NormalizedName(name).target_value() for name in location_names]
+
+        search_key = NormalizedName(location_name).target_value()
+        matches = get_close_matches(search_key, search_candidates)
+        if matches:
+            logger.debug(f"Found match for {location_name} [Candidates: {len(search_candidates)}]:")
+            for match in matches:
+                logger.debug(f" - {match}")
+            return next((loc for loc in locations if name_matches(loc, matches[0])), None)
+
+        return None
 
     async def search(self, search_str: str, gravity_well: bool = False, navigable: bool = False) -> list[LocationInfo]:
         locations = await self.get_locations()
