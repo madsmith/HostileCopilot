@@ -2,6 +2,7 @@ import io
 from pathlib import Path
 from PIL.Image import Image
 import pyautogui
+import time
 
 from hostile_copilot.config import OmegaConfig
 
