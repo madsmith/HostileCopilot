@@ -193,7 +193,8 @@ ping_analysis_agent:
     1950: "Igneous",
     1790: "Obsidian",
     1820: "Quartzite",
-    1730: "Shale"
+    1730: "Shale",
+    620: "Large Gem"
   }
   debug: true
   debug_path: "screenshots/ping_analysis"
