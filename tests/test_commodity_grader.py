@@ -41,6 +41,8 @@ class TestCommodityGrader:
             ("QUANTANIUM", "Quantainium"),
             ("QUANTANIUM (RAW)", "Quantainium"),
             ("QUANTANIUM (ORE)", "Quantainium"),
+
+            ("Bexalite (Raw)", "Bexalite"),
             
         ]
     )
@@ -120,3 +122,28 @@ class TestCommodityGrader:
         # Best tier should be the smallest tier label (1 is highest value cluster)
         min_tier = min(c.tier for c in result.commodity_grades)
         assert result.best_tier == min_tier == 1
+
+    @pytest.mark.parametrize(
+        "commodity_name, min_price",
+        [
+            ("Quantainium", 15000),
+            ("Taranite", 6000),
+            ("Bexalite", 6000),
+            ("Aluminum", 200),
+        ]
+    )
+    @pytest.mark.asyncio
+    async def test_get_price_minimum(
+        self,
+        config: OmegaConfig,
+        uexcorp_client: UEXCorpClient,
+        commodity_name: str,
+        min_price: int
+    ):
+        grader = CommodityGrader(config)
+
+        await grader.initialize(uexcorp_client)
+
+        result = grader._get_price(commodity_name)
+
+        assert result >= min_price
