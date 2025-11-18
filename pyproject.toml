@@ -40,6 +40,9 @@ dependencies = [
     "logfire[requests]>=4.3.5",
     "scikit-learn>=1.7.1",
     "anyio>=4.10.0",
+    "ultralytics>=8.3.228",
+    "pyside6>=6.10.0",
+    "dxcam>=0.0.5",
 ]
 
 [project.scripts]
