@@ -56,6 +56,8 @@ class NavSetRouteTask(Task):
             ("vkbd:sleep", 0.2),
             # Click twice to accomodate GUI jank
             ("click", (search_location.x, search_location.y)),
+            ("moveRel", (5, 1, 0.2)),
+            ("moveRel", (-5, -1, 0.2)),
             ("sleep", 0.2),
             ("click", (search_location.x, search_location.y)),
             ("sleep", 0.2),
