@@ -31,6 +31,7 @@ app:
       single_item_value: 300000
 
     notify_tier: 3
+  max_location_age: 3600
 
 location_provider:
   cleanup_rules:

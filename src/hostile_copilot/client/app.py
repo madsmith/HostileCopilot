@@ -113,6 +113,8 @@ class HostileCoPilotApp:
             self._voice_client.on_immediate_activation(self._on_immediate_activation)
 
             self._audio_device.start()
+
+        await self._load_gravity_well()
             
         logger.info("HostileCoPilotApp initialized")
 
@@ -177,6 +179,19 @@ class HostileCoPilotApp:
             system_prompt=copilot_system_prompt,
             toolsets=[copilot_toolset],
         )
+
+    async def _load_gravity_well(self):
+        gravity_well = self._app_config.get("gravity_well", "")
+        if gravity_well:
+            max_location_age = self._config.get("app.max_location_age", 3600)
+
+            location = gravity_well.get("location", "")
+            timestamp = gravity_well.get("timestamp", 0)
+            
+            if time.time() - timestamp < max_location_age:
+                logger.info(f"Loading gravity well location: {location}")
+                s
+                self._current_location = location
     
     async def run(self):
         self._is_running = True
@@ -389,6 +404,11 @@ class HostileCoPilotApp:
 
         if len(matches) == 1:
             self._current_location = matches[0].name
+
+            # Save current location and time to settings
+            self._app_config.set("gravity_well.location", self._current_location)
+            self._app_config.set("gravity_well.timestamp", time.time())
+
             return SetLocationResponse(
                 success=True,
                 message=f"Current location set to {self._current_location}"
