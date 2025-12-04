@@ -43,6 +43,7 @@ TODO.md
 #Runtime data
 mining_logger.db
 cache/
+runs/
 
 # Runtime debug files
 screenshot.png
