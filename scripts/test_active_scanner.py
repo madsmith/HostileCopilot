@@ -189,7 +189,7 @@ def parse_args() -> argparse.Namespace:
         "--model-name",
         "-m",
         type=str,
-        default="img640_bs16_e50_yolo11n-obb.pt",
+        default="scanner.pt",
         help="Model filename under resources/models/scanner/",
     )
     parser.add_argument(
@@ -223,7 +223,11 @@ def main() -> None:
     args = parse_args()
 
     project_root = Path(__file__).resolve().parents[1]
+
     model_path = project_root / "resources" / "models" / "scanner" / args.model_name
+
+    if not model_path.exists():
+        raise FileNotFoundError(f"Model file not found: {model_path}")
 
     print(f"Loading model from {model_path}...")
     model = load_model(model_path)
