@@ -40,6 +40,9 @@ config/settings.yaml
 commodity.json
 TODO.md
 
+# Prevent test models from being committed for the time being
+resources/models/scanner/
+
 #Runtime data
 mining_logger.db
 cache/
