@@ -13,7 +13,7 @@ from PySide6.QtCore import QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication
 
-from hostile_copilot.client.components.ui.overlay import Overlay, Detection
+from hostile_copilot.client.components.ui.overlay_detections import OverlayDetections, Detection
 
 try:
     from ultralytics import YOLO
@@ -249,7 +249,7 @@ def main() -> None:
 
     app = QApplication([])
 
-    overlay = Overlay()
+    overlay = OverlayDetections()
 
     last_time = 0.0
 

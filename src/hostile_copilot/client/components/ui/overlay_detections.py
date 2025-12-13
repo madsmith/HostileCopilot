@@ -18,7 +18,7 @@ class Detection:
     color: QColor | None = None
 
 
-class Overlay(QWidget):
+class OverlayDetections(QWidget):
     """Full-screen transparent overlay for drawing detections.
 
     The window:
