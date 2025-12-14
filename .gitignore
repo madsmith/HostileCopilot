@@ -39,6 +39,7 @@ config/settings.yaml
 .logfire/logfire_credentials.json
 commodity.json
 TODO.md
+test.py
 
 # Prevent test models from being committed for the time being
 resources/models/scanner/
