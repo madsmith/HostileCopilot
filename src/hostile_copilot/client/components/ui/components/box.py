@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
 from PySide6.QtGui import QColor, QPen
 from PySide6.QtCore import QRect
 from PySide6.QtGui import QPainter
@@ -11,12 +14,14 @@ class Box(Drawable):
     x2: int
     y2: int
     color: QColor | tuple[int, int, int, int] = (0, 255, 0, 255)
-    thickness: int = 2
+    opacity: float = 1.0
+    thickness: int = 1
     
     def __post_init__(self):
         if isinstance(self.color, tuple):
             assert len(self.color) == 4
             self.color = QColor(*self.color)
+        self.color.setAlphaF(self.opacity)
     
     def draw(self, painter: QPainter) -> None:
         if self.x2 <= self.x1 or self.y2 <= self.y1:

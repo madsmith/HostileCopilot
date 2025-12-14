@@ -1,11 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List
-
-from PySide6.QtCore import Qt, QRect
-from PySide6.QtGui import QPainter, QColor, QPen, QFont
-from PySide6.QtWidgets import QWidget
+from PySide6.QtGui import QColor
 
 from .overlay import Overlay
 from .components.labeled_box import LabeledBox
@@ -20,7 +16,7 @@ class Detection:
     color: QColor | None = None
 
 class DetectionBox(LabeledBox):
-    def __init__(self, detection: Detection):
+    def __init__(self, detection: Detection, **kwargs):
         super().__init__(
             x1=detection.x1,
             y1=detection.y1,
@@ -28,6 +24,7 @@ class DetectionBox(LabeledBox):
             y2=detection.y2,
             label=detection.label,
             color=detection.color,
+            **kwargs
         )
         self.detection = detection
 
@@ -43,20 +40,24 @@ class OverlayDetections(Overlay):
     def __init__(self) -> None:
         super().__init__()
 
-    def update_detections(self, detections: List[Detection], margin: int = 0) -> None:
+    def update_detections(self, detections: list[Detection], margin: int = 0) -> None:
         """Replace current detections and trigger a repaint.
 
         Calling this clears the overlay logically (no accumulation).
         """
-        detections_margin = [
-            Detection(
-                x1=d.x1 - margin,
-                y1=d.y1 - margin,
-                x2=d.x2 + margin,
-                y2=d.y2 + margin,
-                label=d.label,
-                color=d.color,
+        drawable_detections = [
+            DetectionBox(
+                Detection(
+                    x1=d.x1 - margin,
+                    y1=d.y1 - margin,
+                    x2=d.x2 + margin,
+                    y2=d.y2 + margin,
+                    label=d.label,
+                    color=d.color,
+                ),
+                font_opacity=0.5,
+                opacity=0.2
             )
             for d in detections
         ]
-        self.set_drawables(detections_margin)
+        self.set_drawables(drawable_detections)

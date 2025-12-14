@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPainter, QPaintEvent
@@ -26,8 +28,11 @@ class Overlay(QWidget):
     def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
         try:
-            painter.setRenderHint(QPainter.Antialiasing)
             for drawable in self._drawables:
-                drawable.draw(painter)
+                try:
+                    painter.setRenderHint(QPainter.Antialiasing, False)
+                    drawable.draw(painter)
+                except Exception as e:
+                    print(f"Error drawing drawable: {e}")
         finally:
             painter.end()

@@ -1,3 +1,6 @@
+import ctypes
+ctypes.windll.shcore.SetProcessDpiAwareness(2) 
+
 import argparse
 import re
 import logging
@@ -31,11 +34,14 @@ def load_model(model_path: Path):
 
     if not model_path.exists():
         model_path = model_path.with_suffix(".pt")
-        if not model_path.exists():
-            raise FileNotFoundError(f"Model file not found: {model_path}")
+
+    if not model_path.exists():
+        model_path = Path("resources") / "models" / "scanner" / model_path.stem()
+
+    if not model_path.exists():
+        raise FileNotFoundError(f"Model file not found: {model_path}")
 
     return YOLO(str(model_path), verbose=True)
-
 
 _camera: dxcam.DXCamera | None = None
 
@@ -222,15 +228,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    project_root = Path(__file__).resolve().parents[1]
+    print(f"Loading model {args.model_name}...")
+    model = load_model(Path(args.model_name))
 
-    model_path = project_root / "resources" / "models" / "scanner" / args.model_name
-
-    if not model_path.exists():
-        raise FileNotFoundError(f"Model file not found: {model_path}")
-
-    print(f"Loading model from {model_path}...")
-    model = load_model(model_path)
     print("Model loaded. Close the overlay window or press Ctrl+C in the console to quit.")
 
     # Attempt to infer image size from model name
@@ -284,7 +284,7 @@ def main() -> None:
         if detections:
             print("Found detections:")
             for det in detections:
-                print(f"  {det}")
+                print(f"  {det.label:<30} [{det.x1}, {det.y1}, {det.x2}, {det.y2}]")
         # Show overlay again with updated detections
         # overlay.show()
         overlay.update_detections(scaled_detections, margin=10)
