@@ -47,6 +47,8 @@ READER_MODEL_PATH = Path("resources/models/digit_reader/")
 
 shutdown_requested = asyncio.Event()
 
+DEBUG = False
+
 def _resolve_model_path(model_path: Path, default_path: Path) -> Path:
     if not model_path.exists():
         model_path = Path(default_path) / model_path
@@ -141,6 +143,7 @@ class ObjectTracker:
                     target_obj.label == tracked_obj.label
                     and is_overlapping(target_obj.bounding_box, tracked_obj.bounding_box)
                 ):
+                    tracked_obj.bounding_box = target_obj.bounding_box
                     tracked_obj.count_seen += 1
                     tracked_obj.count_missing = 0
                     tracked_obj.time_seen = current_time
@@ -215,6 +218,8 @@ class ScanReader:
         self._transforms = get_crnn_transform()
         self._vocabulary = reader_model.config.get("vocabulary")
         self._device = device
+        self._inspect_enabled = False
+        self._inspect_path = "screenshots/last_reader.png"
 
         assert self._vocabulary is not None, "Reader model must have an alphabet"
 
@@ -227,8 +232,9 @@ class ScanReader:
         img_tensor = img_tensor.to(self._device)
 
         # Convert back to Image and save
-        preview_img = self._tensor_to_PIL(img_tensor)
-        preview_img.save("screenshots/scan_prediction.png")
+        if self._inspect_enabled:
+            preview_img = self._tensor_to_PIL(img_tensor)
+            preview_img.save(self._inspect_path)
         
         with torch.no_grad():
             with Profiler("Reader"):
@@ -349,21 +355,12 @@ def crop_frame(frame: np.ndarray, bounding_box: BoundingBoxLike, fast: bool = Tr
     obb: OrientedBoundingBox = bounding_box
 
     src_corners = np.array(obb.corners(), dtype=np.float32)
-    print(f"Source corners: {src_corners}")
     width, height = int(round(obb.w)), int(round(obb.h))
 
-    if overlay:
+    if DEBUG and overlay:
         polygon = Polygon(src_corners, color=(255, 0, 0, 255))
-        # Draw a 400x150 polygon at (10, 10)
-        polytest = Polygon([
-                (10, 10),
-                (10, 160),
-                (410, 160),
-                (410, 10),
-            ], color=(255,0,255,255))
         overlay.set_drawables([
             polygon,
-            polytest,
         ])
 
     dst_corners = np.array([
@@ -406,7 +403,12 @@ def process_ping_scans(
 
         text = scan_reader.predict(crop)
         tracker.set_metadata(obj.id, "text", text)
+
+        if text != previous_text:
+            tracker.set_metadata(obj.id, "time_changed", time.time())
+        
         logger.info(f"Detected text: {text}")
+
 
 def process_detection(crop: np.ndarray, detection: DetectedObject, scan_reader: ScanReader, tracker: ObjectTracker) -> None:
     if detection.label != "Ping - Scan":
@@ -429,13 +431,13 @@ def process_detection(crop: np.ndarray, detection: DetectedObject, scan_reader: 
 
 def save_detection(crop: np.ndarray, detection: DetectedObject, args: argparse.Namespace) -> None:
     # Ensure output directory exists
-    label_dir = detection.label.replace(" ", "_")
-    output_path = Path(args.save_dir) / label_dir
+    label_norm = detection.label.replace(" ", "_").lower()
+    output_path = Path(args.save_dir) / label_norm
     output_path.mkdir(parents=True, exist_ok=True)
 
     # Save crop
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    filename = f"{detection.id}_{timestamp}.png"
+    filename = f"{label_norm}_{detection.id}_{timestamp}.png"
     cv2.imwrite(str(output_path / filename), crop)
 
 
@@ -503,7 +505,7 @@ def parse_args() -> argparse.Namespace:
         help="Save all labels to disk"
     )
     extraction_group.add_argument(
-        "--label", type=str, nargs="+", default=[],
+        "--label", "-l", type=str, nargs="+", default=[],
         help="Specify a label to save. Can be specified multiple times."
     )
     extraction_group.add_argument(
@@ -538,9 +540,21 @@ def parse_args() -> argparse.Namespace:
         "--inspect-interval", type=int, default=1,
         help="Interval between saves of inspected camera frames in seconds. Default: %(default)s"
     )
+    advanced_group.add_argument(
+        "--inspect-reader", action="store_true", help="Inspect reader output by writing frames intermittently to disk."
+    )
+    advanced_group.add_argument(
+        "--inspect-reader-path", type=str, default="screenshots/last_reader.png",
+        help="File path for inspected reader frame. Default: %(default)s"
+    )
     advanced_group.add_argument("--debug", action="store_true", help="Enable debug output")
     advanced_group.add_argument("--profiler", action="store_true", help="Enable profiler output")
     advanced_group.add_argument("--overlay-detections", action="store_true", help="Overlay detections on camera feed")
+    advanced_group.add_argument(
+        "--overlay-monitor", type=int, default=None,
+        help="Monitor index to show the overlay.  Defaults to using the same "
+             "index as --monitor but for framework reasons those may differ. "
+             "Indexing starts at 1.")
 
     return parser.parse_args()
     
@@ -568,13 +582,15 @@ async def run_app(args: argparse.Namespace):
     )
 
     scan_reader = ScanReader(reader_model, device)
+    if args.inspect_reader:
+        scan_reader.inspect_enabled = True
+        scan_reader.inspect_path = Path(args.inspect_reader_path)
 
     screens = QGuiApplication.screens()
-    screen = screens[args.monitor - 1]
+    overlay_monitor = args.overlay_monitor if args.overlay_monitor is not None else args.monitor
+    screen = screens[overlay_monitor - 1]
     overlay = Overlay()
     overlay.showOnScreen(screen)
-    print(f"Overlay size: {overlay.width()} x {overlay.height()}")
-
 
     camera = Camera(screen_idx=(args.monitor - 1))
 
@@ -594,20 +610,20 @@ async def run_app(args: argparse.Namespace):
             if delay > 0:
                 await asyncio.sleep(delay)
 
-    def criteria_new_persistent(obj: TrackedObject, metadata: dict[str, Any]) -> bool:
+    def criteria_new_persistent(obj: TrackedObject, metadata: dict[str, Any], persistence_age: float = 0.3) -> bool:
         now = time.time()
 
-        scan_updated = False
-        if obj.label == "Ping - Scan":
-            previous_text = tracker.get_metadata(obj.id, "previous_text")
-            current_text = tracker.get_metadata(obj.id, "text")
-            if previous_text != current_text:
-                scan_updated = True
+        time_updated = metadata.get("time_updated")
+        time_processed = metadata.get("time_processed", 0)
         
-        has_persisted = now - obj.time_detected > 0.3
-        has_not_been_detected = "detected" not in metadata
-        
-        return (has_persisted and has_not_been_detected) or scan_updated
+        last_modify_time = time_updated or obj.time_detected
+        persistent_age = now - last_modify_time
+
+        if persistent_age < persistence_age:
+            return False
+
+        return time_processed <= last_modify_time
+
 
     while not shutdown_requested.is_set():
         tick_start = time.time()
@@ -615,7 +631,7 @@ async def run_app(args: argparse.Namespace):
         with Profiler("capture"):
             logger.debug(f"Capturing frame... {frame_count}")
             frame = camera.capture()
-            logger.info(f"Captured frame: {frame.shape}")
+            logger.debug(f"Captured frame shape: {frame.shape}")
             frame_count += 1
 
         if args.inspect and time.time() > (last_inspect_camera_save + args.inspect_interval):
@@ -644,10 +660,12 @@ async def run_app(args: argparse.Namespace):
             if args.save:
                 check_save_detection(crop, detection, tracker, args)
 
-            tracker.set_metadata(detection.id, "detected", True)
+            tracker.set_metadata(detection.id, "time_processed", time.time())
 
         if args.overlay_detections:
             drawables = overlay._drawables
+            print(f"Current drawables: {len(drawables)}")
+            overlay.clear_drawables()
             new_drawables = []
             for obj in tracked_objects:
                 aabb = obj.bounding_box.to_aabb()
@@ -674,6 +692,7 @@ async def run_app(args: argparse.Namespace):
             print("Expired not seen object:", obj)
 
         await schedule_tick(tick_start)
+        overlay.clear_drawables()
 
 
 def main() -> None:
