@@ -43,10 +43,12 @@ dependencies = [
     "ultralytics>=8.3.228",
     "pyside6>=6.10.0",
     "dxcam>=0.0.5",
+    "qasync>=0.28.0",
 ]
 
 [project.scripts]
 hostile-copilot = "hostile_copilot.client.main:main"
+hostile-copilot-active-scanner = "hostile_copilot.client.active_scanner:main"
 
 [project.urls]
 Homepage = "https://github.com/madsmith/HostileCoPilot"

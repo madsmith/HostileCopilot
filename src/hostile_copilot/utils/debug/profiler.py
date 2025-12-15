@@ -67,6 +67,10 @@ class Profiler:
 
     # ===== Controls =====
     @classmethod
+    def is_enabled(cls) -> bool:
+        return cls._enabled
+    
+    @classmethod
     def enable(cls, enabled: bool = True) -> None:
         cls._enabled = bool(enabled)
 

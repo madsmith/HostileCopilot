@@ -36,7 +36,7 @@ def load_model(model_path: Path):
         model_path = model_path.with_suffix(".pt")
 
     if not model_path.exists():
-        model_path = Path("resources") / "models" / "scanner" / model_path.stem()
+        model_path = Path("resources") / "models" / "detector" / model_path.name
 
     if not model_path.exists():
         raise FileNotFoundError(f"Model file not found: {model_path}")
@@ -196,7 +196,7 @@ def parse_args() -> argparse.Namespace:
         "-m",
         type=str,
         default="scanner.pt",
-        help="Model filename under resources/models/scanner/",
+        help="Model filename under resources/models/detector/",
     )
     parser.add_argument(
         "--image-size",
@@ -278,6 +278,8 @@ def main() -> None:
         # Scale from screenshot pixel space to overlay window space
         dst_w = overlay.width()
         dst_h = overlay.height()
+        print(f"Source: {width} x {height}")
+        print(f"Destination: {dst_w} x {dst_h}")
         scaled_detections = scale_detections(detections, width, height, dst_w, dst_h)
 
 

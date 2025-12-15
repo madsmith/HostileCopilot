@@ -1,30 +1,30 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from PySide6.QtGui import QColor, QPainter, QPen
-from PySide6.QtCore import QRect
+import numpy as np
+from PySide6.QtGui import QColor, QPainter, QPen, QPolygonF
+from PySide6.QtCore import QPointF
 
 from .base import Drawable
 
 @dataclass
-class Box(Drawable):
-    x1: int
-    y1: int
-    x2: int
-    y2: int
+class Polygon(Drawable):
+    points: list[QPointF] | np.ndarray | list[tuple[float, float]]
     color: QColor | tuple[int, int, int, int] = (0, 255, 0, 255)
     opacity: float = 1.0
     thickness: int = 1
     
     def __post_init__(self):
+        if isinstance(self.points, np.ndarray):
+            self.points = [QPointF(x, y) for x, y in self.points]
+        elif isinstance(self.points, list):
+            self.points = [QPointF(x, y) for x, y in self.points]
+            
         if isinstance(self.color, tuple):
             assert len(self.color) == 4
             self.color = QColor(*self.color)
         self.color.setAlphaF(self.opacity)
     
     def draw(self, painter: QPainter) -> None:
-        if self.x2 <= self.x1 or self.y2 <= self.y1:
-            return
-
         painter.setPen(QPen(self.color, self.thickness))
-        painter.drawRect(QRect(self.x1, self.y1, self.x2 - self.x1, self.y2 - self.y1))
+        painter.drawPolygon(QPolygonF(self.points))

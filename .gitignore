@@ -43,6 +43,8 @@ test.py
 
 # Prevent test models from being committed for the time being
 resources/models/scanner/
+resources/models/detector/
+resources/models/digit_reader/
 
 #Runtime data
 mining_logger.db
@@ -61,3 +63,5 @@ test_files/*_to_*.wav
 test_files/*_resampled_*.wav
 tiermap.json
 regolith_bodies.json
+captures/
+capture_test/
