@@ -20,10 +20,10 @@ class ResizeToHeight:
         """
         Resize image to given height while preserving aspect ratio.
         """
-        w, h = img.size
-        new_h = self.height
-        new_w = int(w * (new_h / h))
-        return img.resize((new_w, new_h), self.interpolation)
+        width, height = img.size
+        new_height = self.height
+        new_width = int(round(width * (new_height / height)))
+        return img.resize((new_width, new_height), self.interpolation)
     
     def __repr__(self):
         return f"ResizeToHeight(height={self.height})"
