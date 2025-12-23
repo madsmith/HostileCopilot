@@ -34,7 +34,7 @@ import torch
 from typing import Any, Callable
 from ultralytics import YOLO
 
-from hostile_copilot.scan_reader import CRNNLoader, CRNN, get_crnn_transform, greedy_decode_single
+from hostile_copilot.scan_reader import CRNNLoader, CRNN, get_crnn_transform, DecodeUtils
 from hostile_copilot.client.components.ui.overlay import Overlay
 from hostile_copilot.client.components.ui.components import LabeledBox, Polygon
 from hostile_copilot.utils.debug.profiler import Profiler
@@ -47,7 +47,20 @@ READER_MODEL_PATH = Path("resources/models/digit_reader/")
 
 shutdown_requested = asyncio.Event()
 
-DEBUG = False
+DEBUG = True
+VERBOSE = False
+
+def output(*args):
+    """
+    Wrapper around calling print() that can be disabled with a flag
+    """
+    to_str = repr if VERBOSE else str
+    msg = " ".join(to_str(a) for a in args)
+
+    if VERBOSE:
+        logger.info(msg)
+    else:
+        print(msg)
 
 def _resolve_model_path(model_path: Path, default_path: Path) -> Path:
     if not model_path.exists():
@@ -76,13 +89,19 @@ class Camera:
     """
     State wrapper around DXCam camera.
     """
-    def __init__(self, screen_idx: int):
-        self._select_monitor(screen_idx)
-        self.camera: dxcam.DXCamera = dxcam.create(
-            device_idx=self._device_idx,
-            output_idx=self._output_idx,
-            output_color="BGR",
-        )
+    def __init__(self, screen_number: int | None = None):
+
+        if screen_number is None:
+            logger.info("Using primary monitor")
+            self.camera = dxcam.create(output_color="BGR")
+        else:
+            self._select_monitor(screen_number)
+            logger.info(f"Using monitor {screen_number} [Device: {self._device_idx}, Output: {self._output_idx}]")
+            self.camera: dxcam.DXCamera = dxcam.create(
+                device_idx=self._device_idx,
+                output_idx=self._output_idx,
+                output_color="BGR",
+            )
         self._last_frame: np.ndarray | None = None
 
     def _select_monitor(self, screen_idx: int):
@@ -92,7 +111,7 @@ class Camera:
             factory = DXFactory()
         count = 0
         for device_idx, outputs in enumerate(factory.outputs):
-            for output_idx, _ in enumerate(outputs):
+            for output_idx, output_data in enumerate(outputs):
                 if count == screen_idx:
                     self._device_idx = device_idx
                     self._output_idx = output_idx
@@ -115,6 +134,12 @@ class DetectedObject:
     confidence: float
     bounding_box: BoundingBoxLike
 
+    def __repr__(self):
+        return f"DetectedObject(label={self.label}, confidence={self.confidence:.2f}, bounding_box={self.bounding_box})"
+
+    def __str__(self):
+        return f"DetectedObject(label={self.label}, confidence={self.confidence:.2f})"
+
 
 @dataclass
 class TrackedObject(DetectedObject):
@@ -123,6 +148,12 @@ class TrackedObject(DetectedObject):
     time_seen: float
     count_seen: int = 0
     count_missing: int = 0
+
+    def __repr__(self):
+        return f"TrackedObject(label={self.label}, confidence={self.confidence:.2f}, bounding_box={self.bounding_box}, id={self.id}, time_detected={self.time_detected}, time_seen={self.time_seen}, count_seen={self.count_seen}, count_missing={self.count_missing})"
+
+    def __str__(self):
+        return f"TrackedObject(label={self.label}, confidence={self.confidence:.2f}, id={self.id})"
 
 
 class ObjectTracker:
@@ -223,6 +254,11 @@ class ScanReader:
 
         assert self._vocabulary is not None, "Reader model must have an alphabet"
 
+    def enable_inspection(self, path: Path | None = None) -> None:
+        self._inspect_enabled = True
+        if path is not None:
+            self._inspect_path = path
+
     def predict(self, crop: np.ndarray) -> str:
         crop_rgb = crop[:, :, ::-1]
         pil_image = Image.fromarray(crop_rgb).convert("L")
@@ -239,8 +275,9 @@ class ScanReader:
         with torch.no_grad():
             with Profiler("Reader"):
                 logits = self._reader_model(img_tensor)
-                prediction = greedy_decode_single(self._vocabulary, logits)
+                prediction, confidence = DecodeUtils.greedy_decode_with_confidence(self._vocabulary, logits)
         
+        logger.info(f"Reader prediction: {prediction} ({confidence:.2f})")
         return prediction
 
     @classmethod
@@ -355,7 +392,9 @@ def crop_frame(frame: np.ndarray, bounding_box: BoundingBoxLike, fast: bool = Tr
     obb: OrientedBoundingBox = bounding_box
 
     src_corners = np.array(obb.corners(), dtype=np.float32)
-    width, height = int(round(obb.w)), int(round(obb.h))
+    # Stabalize by rounding to nearest 2 pixels
+    width  = int(round(obb.w / 2) * 2)
+    height = int(round(obb.h / 2) * 2)
 
     if DEBUG and overlay:
         polygon = Polygon(src_corners, color=(255, 0, 0, 255))
@@ -388,9 +427,14 @@ def process_ping_scans(
     tracker: ObjectTracker,
     overlay: Overlay | None = None,
 ):
+    # TODO: debug
+    print(f"Processing ping scans: {len(tracked_objects)} objects")
     for obj in tracked_objects:
         if obj.label != "Ping - Scan":
             continue
+
+        # TODO: debug
+        print(f"Processing TrackedObject [{obj.id}] {obj.label} - {obj.bounding_box}")
 
         crop = crop_frame(frame, obj.bounding_box, overlay=overlay)
         if crop is None:
@@ -407,7 +451,9 @@ def process_ping_scans(
         if text != previous_text:
             tracker.set_metadata(obj.id, "time_changed", time.time())
         
-        logger.info(f"Detected text: {text}")
+        # logger.info(f"Detected text: {text}")
+        # TODO: show detected text here?
+        logger.debug(f"  Processing TrackedObject [{obj.id}] {obj.label} - {obj.bounding_box}")
 
 
 def process_detection(crop: np.ndarray, detection: DetectedObject, scan_reader: ScanReader, tracker: ObjectTracker) -> None:
@@ -439,6 +485,15 @@ def save_detection(crop: np.ndarray, detection: DetectedObject, args: argparse.N
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     filename = f"{label_norm}_{detection.id}_{timestamp}.png"
     cv2.imwrite(str(output_path / filename), crop)
+
+    # TODO: proper arg to enable this
+    if args.inspect:
+        print("Saving inspection frame")
+        inspect_path = Path(args.inspect_path).parent
+        inspect_path.mkdir(parents=True, exist_ok=True)
+        inspect_filename = inspect_path / "last_detection.png"
+        print(f"Saving to {inspect_filename}")
+        cv2.imwrite(str(inspect_filename), crop)
 
 
 def check_save_detection(crop: np.ndarray, detection: DetectedObject, tracker: ObjectTracker, args: argparse.Namespace) -> None:
@@ -479,8 +534,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose output")
     parser.add_argument(
-        "--monitor", "--mon", "-m", type=int, default=1,
-        help="Specify the monitor index to capture from (1 is first monitor, etc.)"
+        "--monitor", "--mon", "-m", type=int, default=None,
+        help="Specify the monitor number to capture from (Count starting at 1, otherwise attempts to detect primary monitor)"
     )
     parser.add_argument(
         "--fps", "-f", type=float, default=1.0,
@@ -514,6 +569,8 @@ def parse_args() -> argparse.Namespace:
     )
 
     advanced_group = parser.add_argument_group("Advanced")
+    advanced_group.add_argument("--debug", action="store_true", help="Enable debug output")
+    advanced_group.add_argument("--profiler", action="store_true", help="Enable profiler output")
     advanced_group.add_argument(
         "--detector-model", type=str, default="scanner.pt",
         help=f"Path to object detector model. Can also be resolved under the path: {DETECTOR_MODEL_PATH}. Default: %(default)s"
@@ -547,8 +604,6 @@ def parse_args() -> argparse.Namespace:
         "--inspect-reader-path", type=str, default="screenshots/last_reader.png",
         help="File path for inspected reader frame. Default: %(default)s"
     )
-    advanced_group.add_argument("--debug", action="store_true", help="Enable debug output")
-    advanced_group.add_argument("--profiler", action="store_true", help="Enable profiler output")
     advanced_group.add_argument("--overlay-detections", action="store_true", help="Overlay detections on camera feed")
     advanced_group.add_argument(
         "--overlay-monitor", type=int, default=None,
@@ -583,8 +638,7 @@ async def run_app(args: argparse.Namespace):
 
     scan_reader = ScanReader(reader_model, device)
     if args.inspect_reader:
-        scan_reader.inspect_enabled = True
-        scan_reader.inspect_path = Path(args.inspect_reader_path)
+        scan_reader.enable_inspection(Path(args.inspect_reader_path))
 
     screens = QGuiApplication.screens()
     overlay_monitor = args.overlay_monitor if args.overlay_monitor is not None else args.monitor
@@ -592,7 +646,11 @@ async def run_app(args: argparse.Namespace):
     overlay = Overlay()
     overlay.showOnScreen(screen)
 
-    camera = Camera(screen_idx=(args.monitor - 1))
+    if args.monitor is None:
+        camera = Camera()
+    else:
+        monitor_num = args.monitor - 1
+        camera = Camera(screen_number=monitor_num)
 
     tick_interval = 1 / args.fps
     profile_dump_interval = 10
@@ -653,7 +711,8 @@ async def run_app(args: argparse.Namespace):
         new_detections = tracker.query(criteria_new_persistent)
 
         for detection in new_detections:
-            print("Detected new object:", detection)
+            
+            output("Detected new object:", detection)
 
             crop = crop_frame(frame, detection.bounding_box)
 
@@ -663,13 +722,11 @@ async def run_app(args: argparse.Namespace):
             tracker.set_metadata(detection.id, "time_processed", time.time())
 
         if args.overlay_detections:
-            drawables = overlay._drawables
-            print(f"Current drawables: {len(drawables)}")
             overlay.clear_drawables()
             new_drawables = []
             for obj in tracked_objects:
                 aabb = obj.bounding_box.to_aabb()
-                print(f"Drawing object: {obj.label} at {aabb}")
+                logger.debug(f"Drawing object: {obj.label} at {aabb}")
                 drawable = LabeledBox(
                     x1=aabb[0],
                     y1=aabb[1],
@@ -686,19 +743,27 @@ async def run_app(args: argparse.Namespace):
         # Check for expired tracking and notify
         expired = tracker.expire_missing(3)
         for obj in expired:
-            print("Expired missing object:", obj)
+            logger.debug(f"Expired missing object: {obj}")
         expired = tracker.expire_not_seen(0.5)
         for obj in expired:
-            print("Expired not seen object:", obj)
+            logger.debug(f"Expired not seen object: {obj}")
 
         await schedule_tick(tick_start)
         overlay.clear_drawables()
 
 
 def main() -> None:
+    global VERBOSE
+    global DEBUG
+
     app = QApplication(sys.argv)
 
     args = parse_args()
+
+    if args.verbose:
+        VERBOSE = True
+    if args.debug:
+        DEBUG = True
 
     # Setup event loop to communicate with QT
     loop = qasync.QEventLoop(app)
