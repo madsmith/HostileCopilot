@@ -15,14 +15,12 @@ from collections import defaultdict
 import cv2
 from dataclasses import dataclass
 from datetime import datetime
-import dxcam
-from dxcam import DXFactory
+import mss
 import logging
 import math
 import numpy as np
 from pathlib import Path
 from PIL import Image
-from PySide6.QtCore import Qt
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QColor, QGuiApplication
 from PySide6.QtWidgets import QApplication
@@ -35,8 +33,8 @@ from typing import Any, Callable
 from ultralytics import YOLO
 
 from hostile_copilot.scan_reader import CRNNLoader, CRNN, get_crnn_transform, DecodeUtils
-from hostile_copilot.client.components.ui.overlay import Overlay
-from hostile_copilot.client.components.ui.components import LabeledBox, Polygon
+from hostile_copilot.client.components.ui import Overlay, CanvasWindow
+from hostile_copilot.client.components.ui.components import Drawable, LabeledBox, OrientedBox, Polygon
 from hostile_copilot.utils.debug.profiler import Profiler
 from hostile_copilot.utils.geometry import BoundingBoxLike, OrientedBoundingBox, is_overlapping
 
@@ -47,8 +45,10 @@ READER_MODEL_PATH = Path("resources/models/digit_reader/")
 
 shutdown_requested = asyncio.Event()
 
-DEBUG = True
+DEBUG = False
 VERBOSE = False
+
+DEBUG_CURRENT_CROP = None
 
 def output(*args):
     """
@@ -89,50 +89,34 @@ class Camera:
     """
     State wrapper around DXCam camera.
     """
-    def __init__(self, screen_number: int | None = None):
-
-        if screen_number is None:
+    def __init__(self, screen_index: int | None = None):
+        self._sct = mss.mss()
+        # MSS screen indices start at 0 with 0 being the virtual screenspace and 1 being the first monitor
+        # It's a guess that the first monitor maps to the leftmost monitor 
+        if screen_index is None:
             logger.info("Using primary monitor")
-            self.camera = dxcam.create(output_color="BGR")
+            self._mon_index = 1
         else:
-            self._select_monitor(screen_number)
-            logger.info(f"Using monitor {screen_number} [Device: {self._device_idx}, Output: {self._output_idx}]")
-            self.camera: dxcam.DXCamera = dxcam.create(
-                device_idx=self._device_idx,
-                output_idx=self._output_idx,
-                output_color="BGR",
-            )
+            self._mon_index = screen_index + 1
+            logger.info(f"Using monitor {screen_index}")
+        self._monitor = self._sct.monitors[self._mon_index]
         self._last_frame: np.ndarray | None = None
 
-    def _select_monitor(self, screen_idx: int):
-        if hasattr(dxcam, '__factory'):
-            factory = getattr(dxcam, '__factory', None)
-        else:
-            factory = DXFactory()
-        count = 0
-        for device_idx, outputs in enumerate(factory.outputs):
-            for output_idx, output_data in enumerate(outputs):
-                if count == screen_idx:
-                    self._device_idx = device_idx
-                    self._output_idx = output_idx
-                    return
-                count += 1
-
-        raise IndexError(f"Index {screen_idx} is out of range.")
-    
-    def capture(self, region: tuple[int, int, int, int] | None = None) -> np.ndarray:
-        new_frame = self.camera.grab(region)
-        if new_frame is None:
-            return self._last_frame
-        self._last_frame = new_frame
-        return new_frame
+    def capture(self) -> np.ndarray:
+        shot = self._sct.grab(self._monitor)  # BGRA
+        
+        img = np.array(shot, dtype=np.uint8)
+        if img.shape[2] == 4:
+            img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+        self._last_frame = img
+        return img
 
 
 @dataclass
 class DetectedObject:
     label: str
     confidence: float
-    bounding_box: BoundingBoxLike
+    bounding_box: OrientedBoundingBox
 
     def __repr__(self):
         return f"DetectedObject(label={self.label}, confidence={self.confidence:.2f}, bounding_box={self.bounding_box})"
@@ -427,19 +411,25 @@ def process_ping_scans(
     tracker: ObjectTracker,
     overlay: Overlay | None = None,
 ):
+    global DEBUG_CURRENT_CROP
+    DEBUG_CURRENT_CROP = None
+
     # TODO: debug
-    print(f"Processing ping scans: {len(tracked_objects)} objects")
+    logger.debug(f"Processing ping scans: {len(tracked_objects)} objects")
     for obj in tracked_objects:
         if obj.label != "Ping - Scan":
             continue
 
         # TODO: debug
-        print(f"Processing TrackedObject [{obj.id}] {obj.label} - {obj.bounding_box}")
+        logger.debug(f"Processing TrackedObject [{obj.id}] {obj.label} - {obj.bounding_box}")
 
         crop = crop_frame(frame, obj.bounding_box, overlay=overlay)
         if crop is None:
             logger.warning("Fail to detect on missing crop.")
             continue
+
+        if DEBUG:
+            DEBUG_CURRENT_CROP = crop
 
         previous_text = tracker.get_metadata(obj.id, "text")
         if previous_text:
@@ -535,7 +525,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose output")
     parser.add_argument(
         "--monitor", "--mon", "-m", type=int, default=None,
-        help="Specify the monitor number to capture from (Count starting at 1, otherwise attempts to detect primary monitor)"
+        help="Specify which monitor to capture display from based on numerical index.  Numbering is based on MSS library so ordering may vary."
     )
     parser.add_argument(
         "--fps", "-f", type=float, default=1.0,
@@ -606,13 +596,18 @@ def parse_args() -> argparse.Namespace:
     )
     advanced_group.add_argument("--overlay-detections", action="store_true", help="Overlay detections on camera feed")
     advanced_group.add_argument(
-        "--overlay-monitor", type=int, default=None,
-        help="Monitor index to show the overlay.  Defaults to using the same "
-             "index as --monitor but for framework reasons those may differ. "
-             "Indexing starts at 1.")
+        "--preview-detections", action="store_true", default=False,
+        help="Open a window showing the captured frame with detection boxes overlaid."
+    )
+    advanced_group.add_argument(
+        "--render-monitor", type=int, default=None,
+        help="Monitor number on which to show the preview or overlay.  Based on QT screen numbering, so it may vary from other monitor enumerations."
+    )
+
 
     return parser.parse_args()
     
+
 
 async def run_app(args: argparse.Namespace):
     setup_logging(args.verbose, args.debug)
@@ -640,17 +635,28 @@ async def run_app(args: argparse.Namespace):
     if args.inspect_reader:
         scan_reader.enable_inspection(Path(args.inspect_reader_path))
 
-    screens = QGuiApplication.screens()
-    overlay_monitor = args.overlay_monitor if args.overlay_monitor is not None else args.monitor
-    screen = screens[overlay_monitor - 1]
-    overlay = Overlay()
-    overlay.showOnScreen(screen)
+    overlay: Overlay | None = None
+    preview: CanvasWindow | None = None
+    if args.overlay_detections or args.preview_detections:
+        screens = QGuiApplication.screens()
+        render_monitor = args.render_monitor if args.render_monitor is not None else args.monitor
+        screen = screens[render_monitor - 1]
+
+        if args.overlay_detections:
+            logger.info(f"Showing overlay on screen {render_monitor}")
+            overlay = Overlay()
+            overlay.showOnScreen(screen)
+
+        if args.preview_detections:
+            logger.info(f"Showing preview on screen {render_monitor}")
+            preview = CanvasWindow()
+            preview.showOnScreen(screen)
 
     if args.monitor is None:
         camera = Camera()
     else:
         monitor_num = args.monitor - 1
-        camera = Camera(screen_number=monitor_num)
+        camera = Camera(screen_index=monitor_num)
 
     tick_interval = 1 / args.fps
     profile_dump_interval = 10
@@ -721,9 +727,9 @@ async def run_app(args: argparse.Namespace):
 
             tracker.set_metadata(detection.id, "time_processed", time.time())
 
-        if args.overlay_detections:
-            overlay.clear_drawables()
-            new_drawables = []
+        # Build drawables for both overlay and preview window
+        if args.overlay_detections or args.preview_detections:
+            new_drawables: list[Drawable] = []
             for obj in tracked_objects:
                 aabb = obj.bounding_box.to_aabb()
                 logger.debug(f"Drawing object: {obj.label} at {aabb}")
@@ -737,8 +743,25 @@ async def run_app(args: argparse.Namespace):
                     font_opacity=0.5,
                     opacity=0.2
                 )
+                drawable_two = OrientedBox(
+                    center_x=obj.bounding_box.xc,
+                    center_y=obj.bounding_box.yc,
+                    width=obj.bounding_box.w,
+                    height=obj.bounding_box.h,
+                    angle_rad=obj.bounding_box.angle_rad,
+                    color=QColor("blue"),
+                    opacity=0.5
+                )
                 new_drawables.append(drawable)
-            overlay.add_drawables(new_drawables)
+                new_drawables.append(drawable_two)
+
+            if args.overlay_detections and overlay is not None:
+                overlay.clear_drawables()
+                overlay.add_drawables(new_drawables)
+
+            if getattr(args, "preview_detections", False) and preview is not None:
+                preview.set_frame(frame)
+                preview.set_drawables(new_drawables)
 
         # Check for expired tracking and notify
         expired = tracker.expire_missing(3)
@@ -748,8 +771,14 @@ async def run_app(args: argparse.Namespace):
         for obj in expired:
             logger.debug(f"Expired not seen object: {obj}")
 
+        if DEBUG and args.inspect:
+            if DEBUG_CURRENT_CROP is not None:
+                inspect_path = Path(args.inspect_path)
+                inspect_path.parent.mkdir(parents=True, exist_ok=True)
+                current_crop_filename = inspect_path.with_name("debug_current_crop.png")
+                cv2.imwrite(str(current_crop_filename), DEBUG_CURRENT_CROP)
+
         await schedule_tick(tick_start)
-        overlay.clear_drawables()
 
 
 def main() -> None:

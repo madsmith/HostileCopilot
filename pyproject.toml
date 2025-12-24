@@ -42,8 +42,8 @@ dependencies = [
     "anyio>=4.10.0",
     "ultralytics>=8.3.228",
     "pyside6>=6.10.0",
-    "dxcam>=0.0.5",
     "qasync>=0.28.0",
+    "mss>=10.1.0",
 ]
 
 [project.scripts]
