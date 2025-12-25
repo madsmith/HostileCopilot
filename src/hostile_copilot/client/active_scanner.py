@@ -33,6 +33,8 @@ from typing import Any, Callable
 from ultralytics import YOLO
 
 from hostile_copilot.scan_reader import CRNNLoader, CRNN, get_crnn_transform, DecodeUtils
+from hostile_copilot.config import load_config, OmegaConfig
+from hostile_copilot.ping_analyzer import PingAnalyzer, PingAnalysisResult, PingPrediction, PingUnknown
 from hostile_copilot.client.components.ui import Overlay, CanvasWindow
 from hostile_copilot.client.components.ui.components import Drawable, LabeledBox, OrientedBox, Polygon
 from hostile_copilot.utils.debug.profiler import Profiler
@@ -408,6 +410,7 @@ def process_ping_scans(
     tracked_objects: list[TrackedObject],
     frame: np.ndarray,
     scan_reader: ScanReader,
+    ping_analyzer: PingAnalyzer,
     tracker: ObjectTracker,
     overlay: Overlay | None = None,
 ):
@@ -438,6 +441,21 @@ def process_ping_scans(
         text = scan_reader.predict(crop)
         tracker.set_metadata(obj.id, "text", text)
 
+        # TODO: move this somewhere stable
+        try:
+            rs_value = float(text.replace(",", ""))
+            result = ping_analyzer.analyze(rs_value)
+
+            if not isinstance(result, PingUnknown):
+                prediction: PingPrediction = result.prediction
+                
+                for detection in prediction.prediction:
+                    print(f"  Detection: {detection.count}x {detection.label}")
+        except ValueError as e:
+            logger.warning(f"Failed to parse RS value from text '{text}': {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error analyzing ping: {e}")
+
         if text != previous_text:
             tracker.set_metadata(obj.id, "time_changed", time.time())
         
@@ -446,7 +464,13 @@ def process_ping_scans(
         logger.debug(f"  Processing TrackedObject [{obj.id}] {obj.label} - {obj.bounding_box}")
 
 
-def process_detection(crop: np.ndarray, detection: DetectedObject, scan_reader: ScanReader, tracker: ObjectTracker) -> None:
+def process_detection(
+    crop: np.ndarray,
+    detection: DetectedObject,
+    scan_reader: ScanReader,
+    tracker: ObjectTracker,
+    ping_analyzer: PingAnalyzer
+) -> None:
     if detection.label != "Ping - Scan":
         logger.debug(f"Skipping {detection.label}")
         return
@@ -463,6 +487,19 @@ def process_detection(crop: np.ndarray, detection: DetectedObject, scan_reader: 
     tracker.set_metadata(detection.id, "text", text)
 
     logger.info(f"Detected text: {text}")
+
+    # Analyze the ping
+    try:
+        # Parse the text as a number (removing comma formatting)
+        rs_text = text.replace(",", "")
+        rs_value = float(rs_text)
+        
+        result = ping_analyzer.analyze(rs_value)
+        print(result)
+    except ValueError as e:
+        logger.warning(f"Failed to parse RS value from text '{text}': {e}")
+        rs_value = None
+    
 
 
 def save_detection(crop: np.ndarray, detection: DetectedObject, args: argparse.Namespace) -> None:
@@ -615,6 +652,9 @@ async def run_app(args: argparse.Namespace):
     if args.profiler:
         Profiler.enable()
     
+    config: OmegaConfig = load_config()
+
+
     inspect_path = Path(args.inspect_path)
     inspect_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -634,6 +674,8 @@ async def run_app(args: argparse.Namespace):
     scan_reader = ScanReader(reader_model, device)
     if args.inspect_reader:
         scan_reader.enable_inspection(Path(args.inspect_reader_path))
+
+    ping_analyzer = PingAnalyzer(config)
 
     overlay: Overlay | None = None
     preview: CanvasWindow | None = None
@@ -712,7 +754,7 @@ async def run_app(args: argparse.Namespace):
 
         tracked_objects = tracker.update(objects)
 
-        process_ping_scans(tracked_objects, frame, scan_reader, tracker, overlay)
+        process_ping_scans(tracked_objects, frame, scan_reader, ping_analyzer, tracker, overlay)
 
         new_detections = tracker.query(criteria_new_persistent)
 
