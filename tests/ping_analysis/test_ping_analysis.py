@@ -41,9 +41,38 @@ def analyze_case_id(param):
             detection = param.prediction[0]
             return f"Result({detection.count}, {detection.label})"
 
-        return f"Result({detection_count} predictions)"
+        return f"Result({detection_count} predictions, {param.prediction.total_size()} items)"
     
     return repr(param)
+
+
+def build_resource_mixed(config):
+    def build_par(*args) -> PingAnalysisResult:
+        total = 0
+        predictions = []
+
+        for count, label in batched(args, 2):
+            total += count * next(r.rs_value for r in config.ping_analyzer.resources if r.label == label)
+            predictions.append(PingDetection(count=count, label=label))
+
+        return PingAnalysisResult(rs_value=total, prediction=predictions)
+        
+    def build_param(*args) -> tuple[int, PingAnalysisResult]:
+        par = build_par(*args)
+        return (par.rs_value, par)
+
+    
+    params = [
+        build_param(1, "Asteroid C-Type", 1, "Asteroid S-Type"),
+        build_param(2, "Asteroid C-Type", 1, "Asteroid S-Type"),
+    ]
+    return params
+
+def build_resource_unknown(config):
+    unknowns = [123, 2001, 1234, 560]
+    params = [(i, PingUnknown(rs_value=i)) for i in unknowns if i not in {r.rs_value for r in config.ping_analyzer.resources}]
+    return params
+
 
 def build_resource_multiple(config, start=2, end=16):
     """Build test parameters for resource multiples"""
@@ -77,7 +106,6 @@ def build_resource_multiple(config, start=2, end=16):
     return sorted(fixed_params, key=lambda x: x[0])
     
 
-
 def pytest_generate_tests(metafunc):
     mark = metafunc.definition.get_closest_marker("dataset")
     if mark is None:
@@ -94,10 +122,14 @@ def pytest_generate_tests(metafunc):
         params = build_resource_multiple(config)
         metafunc.parametrize(("rs_value", "expected"), params, ids=analyze_case_id)
 
-    elif dataset == "resources/unknowns" and {"rs_value","expected"} <= set(metafunc.fixturenames):
-        unknowns = [123, 2001, 1234, 560]
-        params = [(i, PingUnknown(rs_value=i)) for i in unknowns if i not in {r.rs_value for r in config.ping_analyzer.resources}]
+    elif dataset == "resources/mixed" and {"rs_value","expected"} <= set(metafunc.fixturenames):
+        params = build_resource_mixed(config)
         metafunc.parametrize(("rs_value", "expected"), params, ids=analyze_case_id)
+
+    elif dataset == "resources/unknowns" and {"rs_value","expected"} <= set(metafunc.fixturenames):
+        params = build_resource_unknown(config)
+        metafunc.parametrize(("rs_value", "expected"), params, ids=analyze_case_id)
+
 
 #####################################################################
 # Tests
@@ -107,26 +139,37 @@ class TestPingAnalyzer:
     def config(self) -> OmegaConfig:
         return load_config()
 
+
     @pytest.fixture
     def analyzer(self, config: OmegaConfig) -> PingAnalyzer:
         return PingAnalyzer(config)
+
 
     def _test_analyze(self, analyzer: PingAnalyzer, rs_value: int, expected: PingAnalysis):
         result = analyzer.analyze(rs_value)
 
         assert result == expected
     
+
     @pytest.mark.dataset("resources/unknowns")
     def test_analyze_unknowns(self, analyzer: PingAnalyzer, rs_value: int, expected: PingAnalysis):
         self._test_analyze(analyzer, rs_value, expected)
+    
     
     @pytest.mark.dataset("resources/single")
     def test_analyze_single(self, analyzer: PingAnalyzer, rs_value: int, expected: PingAnalysis):
         self._test_analyze(analyzer, rs_value, expected)
 
+
     @pytest.mark.dataset("resources/multiple")
     def test_analyze_multiple(self, analyzer: PingAnalyzer, rs_value: int, expected: PingAnalysis):
         self._test_analyze(analyzer, rs_value, expected)
+
+
+    @pytest.mark.dataset("resources/mixed")
+    def test_analyze_mixed(self, analyzer: PingAnalyzer, rs_value: int, expected: PingAnalysis):
+        self._test_analyze(analyzer, rs_value, expected)
+
 
     def test_analyze_performance(self, analyzer: PingAnalyzer, config: OmegaConfig):
         import time
@@ -136,6 +179,27 @@ class TestPingAnalyzer:
         
         start_time = time.time()
         iterations = 100
+        for _ in range(iterations):
+            for value, _ in params:
+                analyzer.analyze(value)
+        end_time = time.time()
+        
+        elapsed = end_time - start_time
+
+        average_ns = round(elapsed / (iterations * len(params)) * 1e9)
+        from pympler import asizeof
+        logger.info(f"Average analysis time: {average_ns:,} ns (limit: {limit:,} ns) [{asizeof.asizeof(analyzer._lookup_table)}]")
+        assert average_ns < limit, f"Average analysis time {average_ns:,} ns exceeds {limit:,} ns limit"
+
+
+    def test_analyze_performance_unknown(self, analyzer: PingAnalyzer, config: OmegaConfig):
+        import time
+        limit = 10000
+        
+        params = build_resource_unknown(config)
+        
+        start_time = time.time()
+        iterations = 1000
         for _ in range(iterations):
             for value, _ in params:
                 analyzer.analyze(value)
