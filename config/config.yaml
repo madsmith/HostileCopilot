@@ -201,6 +201,27 @@ ping_analysis_agent:
   debug_path: "screenshots/ping_analysis"
 
 
+ping_analyzer:
+  resources: [
+    {rs_value: 1660, label: "Asteroid I-Type", classification: "Asteroid", location_group: "space"},
+    {rs_value: 1700, label: "Asteroid C-Type", classification: "Asteroid", location_group: "space"},
+    {rs_value: 1720, label: "Asteroid S-Type", classification: "Asteroid", location_group: "space"},
+    {rs_value: 1750, label: "Asteroid P-Type", classification: "Asteroid", location_group: "space"},
+    {rs_value: 1850, label: "Asteroid M-Type", classification: "Asteroid", location_group: "space"},
+    {rs_value: 1870, label: "Asteroid Q-Type", classification: "Asteroid", location_group: "space"},
+    {rs_value: 1900, label: "Asteroid E-Type", classification: "Asteroid", location_group: "space"},
+    {rs_value: 2000, label: "Salvage Panels",  classification: "Salvage",  location_group: "space"},
+
+    {rs_value: 620,  label: "Large Gem",       classification: "Mineral",  location_group: "surface"},
+    {rs_value: 1730, label: "Shale",           classification: "Boulder",  location_group: "surface"},
+    {rs_value: 1770, label: "Felsic",          classification: "Boulder",  location_group: "surface"},
+    {rs_value: 1790, label: "Obsidian",        classification: "Boulder",  location_group: "surface"},
+    {rs_value: 1800, label: "Atacamite",       classification: "Boulder",  location_group: "surface"},
+    {rs_value: 1820, label: "Quartzite",       classification: "Boulder",  location_group: "surface"},
+    {rs_value: 1840, label: "Gneiss",          classification: "Boulder",  location_group: "surface"},
+    {rs_value: 1920, label: "Granite",         classification: "Boulder",  location_group: "surface"},
+    {rs_value: 1950, label: "Igneous",         classification: "Boulder",  location_group: "surface"},
+  ]
     
 
 # Text-to-Speech settings
