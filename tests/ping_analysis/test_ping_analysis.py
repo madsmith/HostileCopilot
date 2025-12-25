@@ -10,7 +10,7 @@ from hostile_copilot.ping_analyzer import (
     PingUnknown,
     PingAnalysisResult,
 )
-from hostile_copilot.ping_analyzer.common import PingAnalysisBase
+from hostile_copilot.ping_analyzer.common import PingAnalysisBase, PingPrediction
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +47,36 @@ def analyze_case_id(param):
 
 def build_resource_multiple(config, start=2, end=16):
     """Build test parameters for resource multiples"""
-    params = []
+    params: list[tuple[int, PingAnalysisResult]] = []
     for r in config.ping_analyzer.resources:
         for count in range(start, end + 1):
             params.append((r.rs_value * count, PAR(r.rs_value * count, count, r.label)))
-    return sorted(params, key=lambda x: x[0])
+
+    indexed_params: dict[int, list[PingAnalysisResult]] = {}
+    for param in params:
+        rv_value = param[0]
+        if rv_value not in indexed_params:
+            indexed_params[rv_value] = []
+        indexed_params[rv_value].append(param[1])
+
+    # Set alternates for params with matching rs_values
+    fixed_params = []
+    for rs_value, expected in indexed_params.items():
+        if len(expected) > 1:
+            best_result = min(expected, key=lambda r: r.prediction[0].count)
+            alternates: list[PingPrediction] = [r.prediction for r in expected if r != best_result]
+            # Create alternate parameter for each detection
+            for result in expected:
+                result.alternates = alternates
+                fixed_params.append((rs_value, best_result))
+        else:
+            fixed_params.append(
+                (rs_value, expected[0])
+            )
+    
+    return sorted(fixed_params, key=lambda x: x[0])
+    
+
 
 def pytest_generate_tests(metafunc):
     mark = metafunc.definition.get_closest_marker("dataset")
