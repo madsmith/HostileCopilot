@@ -86,16 +86,19 @@ class PingAnalyzer:
                     check_remainder = remainder + subtract_count * resource.rs_value
                     check_count = count - subtract_count
 
+                    if check_count <= 0:
+                        continue
+
                     if check_remainder in self._lookup_table:
                         remainder_prediction = self._lookup_table[check_remainder].prediction
 
                         # Remainder can not be the same resource type
-                        if remainder_prediction.predictions[0].label == resource.label:
+                        if remainder_prediction.prediction[0].label == resource.label:
                             continue
 
                         # Remainder must match location group
                         remainder_group = self._label_to_location_group.get(
-                            remainder_prediction.predictions[0].label,
+                            remainder_prediction.prediction[0].label,
                             "unknown"
                         )
                         if remainder_group != group:
@@ -103,7 +106,7 @@ class PingAnalyzer:
 
                         # Found a valid combination
                         main_detection: PingDetection = PingDetection(count=check_count, label=resource.label)
-                        combined = PingPrediction([main_detection] + remainder_prediction.predictions)
+                        combined = PingPrediction([main_detection] + remainder_prediction.prediction)
                         if candidate is None or combined.total_size() < candidate.total_size():
                             candidate = combined
                         break

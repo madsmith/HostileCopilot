@@ -49,13 +49,13 @@ def analyze_case_id(param):
 def build_resource_mixed(config):
     def build_par(*args) -> PingAnalysisResult:
         total = 0
-        predictions = []
+        detections = []
 
         for count, label in batched(args, 2):
             total += count * next(r.rs_value for r in config.ping_analyzer.resources if r.label == label)
-            predictions.append(PingDetection(count=count, label=label))
+            detections.append(PingDetection(count=count, label=label))
 
-        return PingAnalysisResult(rs_value=total, prediction=predictions)
+        return PingAnalysisResult(rs_value=total, prediction=detections)
         
     def build_param(*args) -> tuple[int, PingAnalysisResult]:
         par = build_par(*args)

@@ -14,30 +14,30 @@ class PingAnalysisBase:
 class PingPrediction:
     def __init__(self, predictions: list[PingDetection]):
         # Maintain a stable, deterministic ordering for indexed access
-        self.predictions: list[PingDetection] = sorted(
+        self.prediction: list[PingDetection] = sorted(
             predictions,
             key=lambda d: (-d.count, d.label)
         )
 
     def total_size(self) -> int:
-        return sum(d.count for d in self.predictions)
+        return sum(d.count for d in self.prediction)
 
     def __len__(self):
-        return len(self.predictions)
+        return len(self.prediction)
 
     def __iter__(self):
-        return iter(self.predictions)
+        return iter(self.prediction)
 
     def __getitem__(self, index):
-        return self.predictions[index]
+        return self.prediction[index]
 
     def __repr__(self):
-        return f"PingPrediction({self.predictions})"
+        return f"PingPrediction({self.prediction})"
 
     def __eq__(self, other):
         if not isinstance(other, PingPrediction):
             return False
-        return self.predictions == other.predictions
+        return self.prediction == other.prediction
 
 
 @dataclass
