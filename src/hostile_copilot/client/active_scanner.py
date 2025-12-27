@@ -457,7 +457,8 @@ def process_ping_scans(
                         render_text += msg + "\n"
                         print(msg)
                     
-                    
+                    box_width  = 200
+                    box_height = 50
                     if overlay:
                         center_x = overlay.screen_width() // 2
                         center_y = overlay.screen_height() // 8
@@ -470,22 +471,27 @@ def process_ping_scans(
                         )
                         overlay.add_drawable(text_box)
                         overlay.add_drawable(LabeledBox(
-                            x1=center_x-200,
-                            y1=center_y-50,
-                            x2=center_x+200,
-                            y2=center_y+50,
+                            x1=center_x - box_width,
+                            y1=center_y - box_height,
+                            x2=center_x + box_width,
+                            y2=center_y + box_height,
                             label="Ping Analysis",
                         ))
                     
                     if preview:
-                        center_x = preview.width() // 2
-                        center_y = preview.height() // 2
+                        center_x = preview.screen_width() // 2
+                        center_y = preview.screen_height() // 8
                         text_box = TextBox(x=center_x, y=center_y, text=render_text, anchor='center', font_size=18)
                         preview.add_drawable(text_box)
-                        preview.add_drawable(LabeledBox(x1=center_x-200, y1=center_y-50, x2=center_x+200, y2=center_y+50, label="Ping Analysis"))
+                        preview.add_drawable(LabeledBox(
+                            x1=center_x - box_width,
+                            y1=center_y - box_height,
+                            x2=center_x + box_width,
+                            y2=center_y + box_height,
+                            label="Ping Analysis",
+                            color=(255, 255, 0)
+                        ))
 
-                        print(f"Drawing text box at {center_x}, {center_y}")
-                        print(f"Overlay size: {preview.width()}x{preview.height()}")
             except ValueError as e:
                 logger.warning(f"Failed to parse RS value from text '{text}': {e}")
             except Exception as e:
