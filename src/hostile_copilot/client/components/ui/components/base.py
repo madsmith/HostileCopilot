@@ -21,12 +21,22 @@ class TextComponent:
     font_opacity: float | None = None
 
     def __post_init__(self):
-        if isinstance(self.font_color, tuple):
-            assert len(self.font_color) == 4
-            self.font_color = QColor(*self.font_color)
-        elif self.font_color is None:
-            # Default to opaque white; components may override based on background
-            self.font_color = QColor(255, 255, 255, 255)
+        self.font_color = self._validate_color(self.font_color, QColor(255, 255, 255, 255))
+
         # Apply opacity if provided
         if self.font_opacity is not None:
             self.font_color.setAlphaF(self.font_opacity)
+
+    def _validate_color(self, color: QColor | tuple[int, int, int] | tuple[int, int, int, int] | None, default_color: QColor | None = None) -> QColor:
+        if color is None:
+            return default_color
+        
+        if isinstance(color, QColor):
+            return color
+        elif isinstance(color, tuple):
+            if len(color) == 3:
+                return QColor(*color, 255)
+            elif len(color) == 4:
+                return QColor(*color)
+            else:
+                raise ValueError(f"Invalid color tuple: {color}")
