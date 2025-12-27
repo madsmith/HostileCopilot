@@ -31,6 +31,11 @@ class PingPrediction:
     def __getitem__(self, index):
         return self.prediction[index]
 
+    def __str__(self):
+        if len(self.prediction) == 1:
+            return self.prediction[0].label
+        return ", ".join(f"{d.count}x {d.label}" for d in self.prediction)
+
     def __repr__(self):
         return f"PingPrediction({self.prediction})"
 
@@ -50,9 +55,16 @@ class PingAnalysisResult(PingAnalysisBase):
         if not isinstance(self.prediction, PingPrediction):
             self.prediction = PingPrediction(self.prediction)
 
+    def __repr__(self):
+        repr = f"Ping [{self.rs_value}] {str(self.prediction)}"
+
+        if self.alternates:
+            repr += " | Alternates: " + " | ".join(str(alternate) for alternate in self.alternates)
+        return repr
 
 @dataclass
 class PingUnknown(PingAnalysisBase):
-    pass
+    def __repr__(self):
+        return f"Unknown [{self.rs_value}]"
 
 PingAnalysis = Union[PingAnalysisResult, PingUnknown]
