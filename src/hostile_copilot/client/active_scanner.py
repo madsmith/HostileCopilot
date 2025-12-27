@@ -43,6 +43,7 @@ from hostile_copilot.client.components.ui import Overlay, CanvasWindow, Drawable
 from hostile_copilot.client.components.ui.components import Drawable, Box, LabeledBox, OrientedBox, Polygon, TextBox
 from hostile_copilot.utils.debug.profiler import Profiler
 from hostile_copilot.utils.geometry import BoundingBoxLike, OrientedBoundingBox, is_overlapping
+from hostile_copilot.utils.rate_limiter import RateLimiters
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,7 @@ def output(*args):
         logger.info(msg)
     else:
         print(msg)
+
 
 def _resolve_model_path(model_path: Path, default_path: Path) -> Path:
     if not model_path.exists():
@@ -267,7 +269,7 @@ class ScanReader:
                 logits = self._reader_model(img_tensor)
                 prediction, confidence = DecodeUtils.greedy_decode_with_confidence(self._vocabulary, logits)
         
-        logger.info(f"Reader prediction: {prediction} ({confidence:.2f})")
+        logger.debug(f"Reader prediction: {prediction} ({confidence:.2f})")
         return prediction, confidence
 
     @classmethod
@@ -325,7 +327,7 @@ class ScanDisplay:
         self._was_updated = False
 
     def update_prediction(self, ping: PingAnalysis, confidence: float):
-        print(f"Updating prediction: {ping} ({confidence:.2f})")
+        logger.debug(f"Prediction: {ping.rs_value} ({confidence:.2f}) [{ping}")
         self._was_updated = True
         # Cases
         # 1 - PingUnknown.. should decay confidence on showing current ping
@@ -340,6 +342,7 @@ class ScanDisplay:
         if isinstance(ping, PingUnknown):
             # Decay confidence when we see unknown
             self._confidence *= 0.9
+            logger.debug(f"Prediction: Unknown - decayed confidence to {self._confidence:.2f}")
             return
         
         assert isinstance(ping, PingAnalysisResult), f"Received unsupported ping {type(ping)}"
@@ -348,18 +351,22 @@ class ScanDisplay:
         if self.current_scan is None:
             self.current_scan = valid_ping
             self._confidence = confidence
+            logger.debug(f"Prediction: New scan - {self.current_scan.rs_value} ({self._confidence:.2f})")
             return
         
         if self.current_scan.rs_value == valid_ping.rs_value:
             # Same value, just increase confidence
             self._confidence = min(1.0, (self._confidence + confidence + 0.1) / 2)
+            logger.debug(f"Prediction: Same scan - {self.current_scan.rs_value} ({self._confidence:.2f})")
             return
         
         # Different value - decay confidence and update
         self._confidence *= 0.5
+        logger.debug(f"Prediction: Different scan - {self.current_scan.rs_value} ({self._confidence:.2f})")
 
         if self._confidence < self._config["confidence_dropout"]:
             # Drop scan when confidence drops too low
+            logger.debug(f"Prediction: Drop scan - {self.current_scan.rs_value} ({self._confidence:.2f})")
             self.current_scan = None
             self._confidence = 0.0
             return
@@ -369,15 +376,17 @@ class ScanDisplay:
             self.current_scan = valid_ping
             # TODO: Consider whether to reset confidence or blend
             self._confidence = confidence
+            logger.debug(f"Prediction: Promote scan - {self.current_scan.rs_value} ({self._confidence:.2f})")
             return
 
 
     def draw_HUD(self, display: DrawableSurface):
         if self.current_scan is None or self._confidence < self._config["confidence_threshold"]:
+            logger.debug("Prediction: Not enough confidence to display scan")
             return
         
-        margin = (40, 20)
-        min_bbox = (200, 50)
+        margin = (20, 6)
+        min_bbox = (100, 30)
 
         width = display.surface_width()
         height = display.surface_height()
@@ -386,13 +395,15 @@ class ScanDisplay:
         center_y = height // 8
 
         display_text = self._render_ping()
+        logger.debug(f"Rendering scan: {display_text}")
 
         text_box = TextBox(
             x=center_x,
             y=center_y,
             text=display_text,
             anchor="center",
-            font_size=24
+            font_size=28,
+            font_color=(230, 230, 230, 200)
         )
 
         bbox_width = max(text_box.width() + margin[0] * 2, min_bbox[0])
@@ -468,7 +479,7 @@ def convert_to_bounding_box(xywhr: torch.Tensor) -> OrientedBoundingBox:
     x_center, y_center, width, height, angle_rad = xywhr
     width, height, angle_rad = _normalize_whr(width, height, angle_rad)
     return OrientedBoundingBox(x_center, y_center, width, height, angle_rad)
-    
+
 
 def process_frame(frame: np.ndarray, detector_model: YOLO, threshold: float) -> list[DetectedObject]:
     assert frame is not None, "No frame to process"
@@ -576,71 +587,19 @@ def process_ping_scans(
             # RE for valid formatted integers with , separators (3 digits)
             valid_re = r"^\d{1,3}(,\d{3})*$"
             if not re.match(valid_re, text):
-                raise ValueError("Invalid format")
+                raise ValueError(f"Invalid format: {text}")
             rs_text = text.replace(",", "")
             rs_value = float(rs_text)
             result = ping_analyzer.analyze(rs_value)
             scan_display.update_prediction(result, confidence)
-        except Exception as e:
+        except ValueError as e:
             logger.warning(f"Failed to process ping scan: {e}")
             scan_display.update_prediction(PingUnknown(0), confidence)
-
-        # # TODO: move this somewhere stable
-        # if obj.count_seen > 1:
-        #     try:
-        #         rs_value = float(text.replace(",", ""))
-        #         result = ping_analyzer.analyze(rs_value)
-
-        #         if not isinstance(result, PingUnknown):
-        #             prediction: PingPrediction = result.prediction
-                    
-        #             render_text = ""
-        #             for detection in prediction.prediction:
-        #                 msg = f"  Detection: {detection.count}x {detection.label}"
-        #                 render_text += msg + "\n"
-        #                 print(msg)
-                    
-        #             box_width  = 200
-        #             box_height = 50
-        #             if overlay:
-        #                 center_x = overlay.surface_width() // 2
-        #                 center_y = overlay.surface_height() // 8
-        #                 text_box = TextBox(
-        #                     x=center_x,
-        #                     y=center_y,
-        #                     text=render_text,
-        #                     anchor='center',
-        #                     font_size=18
-        #                 )
-        #                 overlay.add_drawable(text_box)
-        #                 overlay.add_drawable(LabeledBox(
-        #                     x1=center_x - box_width,
-        #                     y1=center_y - box_height,
-        #                     x2=center_x + box_width,
-        #                     y2=center_y + box_height,
-        #                     label="Ping Analysis",
-        #                 ))
-                    
-        #             if preview:
-        #                 center_x = preview.surface_width() // 2
-        #                 center_y = preview.surface_height() // 8
-        #                 text_box = TextBox(x=center_x, y=center_y, text=render_text, anchor='center', font_size=18)
-        #                 preview.add_drawable(text_box)
-        #                 preview.add_drawable(LabeledBox(
-        #                     x1=center_x - box_width,
-        #                     y1=center_y - box_height,
-        #                     x2=center_x + box_width,
-        #                     y2=center_y + box_height,
-        #                     label="Ping Analysis",
-        #                     color=(255, 255, 0)
-        #                 ))
-
-        #     except ValueError as e:
-        #         logger.warning(f"Failed to parse RS value from text '{text}': {e}")
-        #     except Exception as e:
-        #         import traceback
-        #         traceback.print_exc()
-        #         logger.error(f"Unexpected error analyzing ping: {e}")
+        except Exception as e:
+            logger.warning(f"Failed to process ping scan: {e}")
+            import traceback
+            traceback.print_exc()
+            scan_display.update_prediction(PingUnknown(0), confidence)
 
         if text != previous_text:
             tracker.set_metadata(obj.id, "time_changed", time.time())
@@ -676,16 +635,11 @@ def check_save_detection(crop: np.ndarray, detection: DetectedObject, tracker: O
     if not args.save:
         return
 
-    now = time.time()
     if args.all_labels or detection.label in args.label:
-        last_capture_time = tracker.get_metadata(detection.id, "capture_time")
-        
-        if last_capture_time is not None and now - last_capture_time < args.capture_interval:
+        if not RateLimiters().get(f"save_{detection.label}").check():
             return
         
         save_detection(crop, detection, args)
-
-        tracker.set_metadata(detection.id, "capture_time", now)
 
 
 def setup_logging(verbose: bool, debug: bool) -> None:
@@ -799,7 +753,6 @@ def parse_args() -> argparse.Namespace:
         help="Monitor number for preview window. Based on QT screen numbering, so it may vary from other monitor enumerations."
     )
 
-
     return parser.parse_args()
     
 
@@ -808,9 +761,9 @@ async def run_app(args: argparse.Namespace):
 
     if args.profiler:
         Profiler.enable()
+        Profiler.track_nested()
     
     config: OmegaConfig = load_config()
-
 
     inspect_path = Path(args.inspect_path)
     inspect_path.parent.mkdir(parents=True, exist_ok=True)
@@ -834,6 +787,7 @@ async def run_app(args: argparse.Namespace):
 
     ping_analyzer = PingAnalyzer(config)
 
+    # Setup UI Components
     overlay: Overlay | None = None
     preview: CanvasWindow | None = None
     if args.overlay_detections or args.overlay_enabled:
@@ -855,15 +809,16 @@ async def run_app(args: argparse.Namespace):
         preview = CanvasWindow()
         preview.showOnScreen(screen)
 
-    # QT Seems to need a moment to pull its head out of its ass.. 
-    # Give it a hot second to establish the window before proceeding.
-    time.sleep(0.5)
-
     if args.monitor is None:
         camera = Camera()
     else:
         monitor_num = args.monitor - 1
         camera = Camera(screen_index=monitor_num)
+
+    # Establish rate limits
+    rl = RateLimiters()
+    for label in args.label:
+        rl.configure(f"save_{label}", interval=args.capture_interval)
 
     tick_interval = 1 / args.fps
     profile_dump_interval = 10
@@ -878,8 +833,7 @@ async def run_app(args: argparse.Namespace):
         with Profiler("sleep"):
             now = time.time()
             delay = max(0, tick_start + tick_interval - now)
-            if delay > 0:
-                await asyncio.sleep(delay)
+            await asyncio.sleep(delay)
 
     def criteria_new_persistent(obj: TrackedObject, metadata: dict[str, Any], persistence_age: float = 0.3) -> bool:
         now = time.time()
@@ -898,110 +852,113 @@ async def run_app(args: argparse.Namespace):
 
     while not shutdown_requested.is_set():
         tick_start = time.time()
+        with Profiler("tick"):
 
-        with Profiler("capture"):
-            logger.debug(f"Capturing frame... {frame_count}")
-            frame = camera.capture()
-            logger.debug(f"Captured frame shape: {frame.shape}")
-            frame_count += 1
+            with Profiler("capture"):
+                logger.debug(f"Capturing frame... {frame_count}")
+                frame = camera.capture()
+                logger.debug(f"Captured frame shape: {frame.shape}")
+                frame_count += 1
 
-        if args.inspect and time.time() > (last_inspect_camera_save + args.inspect_interval):
-            with Profiler("inspect"):
-                logger.debug("Saving frame...")
-                cv2.imwrite(str(inspect_path), frame)
-                last_inspect_camera_save = time.time()
+            if args.inspect and time.time() > (last_inspect_camera_save + args.inspect_interval):
+                with Profiler("inspect"):
+                    logger.debug("Saving frame...")
+                    cv2.imwrite(str(inspect_path), frame)
+                    last_inspect_camera_save = time.time()
 
-        if Profiler.is_enabled() and time.time() > profile_dump_schedule_time:
-            Profiler.dump()
-            profile_dump_schedule_time = time.time() + profile_dump_interval
+            if Profiler.is_enabled() and time.time() > profile_dump_schedule_time:
+                Profiler.dump()
+                profile_dump_schedule_time = time.time() + profile_dump_interval
 
-        objects = process_frame(frame, detector_model, args.confidence)
+            with Profiler("process_frame"):
+                objects = process_frame(frame, detector_model, args.confidence)
 
-        tracked_objects = tracker.update(objects)
+            with Profiler("track_objects"):
+                tracked_objects = tracker.update(objects)
 
-        if overlay is not None:
-            # TODO: introduce a single update approach to updating drawables.
-            overlay.clear_drawables()
-        if preview is not None:
-            preview.clear_drawables()
-            
-        process_ping_scans(tracked_objects, frame, scan_reader, ping_analyzer, tracker, scan_display, overlay, preview)
+            if overlay is not None:
+                # TODO: introduce a single update approach to updating drawables.
+                overlay.clear_drawables()
+            if preview is not None:
+                preview.clear_drawables()
+                
+            with Profiler("process_ping_scans"):
+                process_ping_scans(tracked_objects, frame, scan_reader, ping_analyzer, tracker, scan_display, overlay, preview)
 
-        new_detections = tracker.query(criteria_new_persistent)
+            new_detections = tracker.query(criteria_new_persistent)
 
-        for detection in new_detections:
-            
-            output("Detected new object:", detection)
+            for detection in new_detections:
+                output("Detected new object:", detection)
 
-            crop = crop_frame(frame, detection.bounding_box)
+                crop = crop_frame(frame, detection.bounding_box)
 
-            if args.save:
-                check_save_detection(crop, detection, tracker, args)
+                if args.save:
+                    with Profiler("save_detections"):
+                        check_save_detection(crop, detection, tracker, args)
 
-            tracker.set_metadata(detection.id, "time_processed", time.time())
+                tracker.set_metadata(detection.id, "time_processed", time.time())
 
-        scan_display.tick()
+            scan_display.tick()
 
-        if args.overlay_enabled:
-            scan_display.draw_HUD(overlay)
+            with Profiler("draw_HUD"):
+                if args.overlay_enabled:
+                    scan_display.draw_HUD(overlay)
 
-        if args.preview_detections:
-            scan_display.draw_HUD(preview)
+                if args.preview_detections:
+                    scan_display.draw_HUD(preview)
 
-        # Build drawables for both overlay and preview window
-        if args.overlay_detections or args.preview_detections:
-            new_drawables: list[Drawable] = []
-            for obj in tracked_objects:
-                aabb = obj.bounding_box.to_aabb()
-                logger.debug(f"Drawing object: {obj.label} at {aabb}")
-                drawable = LabeledBox(
-                    x1=aabb[0],
-                    y1=aabb[1],
-                    x2=aabb[2],
-                    y2=aabb[3],
-                    label=obj.label,
-                    color=QColor("red"),
-                    font_opacity=0.5,
-                    opacity=0.2
-                )
-                drawable_two = OrientedBox(
-                    center_x=obj.bounding_box.xc,
-                    center_y=obj.bounding_box.yc,
-                    width=obj.bounding_box.w,
-                    height=obj.bounding_box.h,
-                    angle_rad=obj.bounding_box.angle_rad,
-                    color=QColor("blue"),
-                    opacity=0.5
-                )
-                new_drawables.append(drawable)
-                new_drawables.append(drawable_two)
+            # Build drawables for both overlay and preview window
+            if args.overlay_detections or args.preview_detections:
+                with Profiler("draw_detections"):
+                    new_drawables: list[Drawable] = []
+                    for obj in tracked_objects:
+                        aabb = obj.bounding_box.to_aabb()
+                        logger.debug(f"Drawing object: {obj.label} at {aabb}")
+                        drawable = LabeledBox(
+                            x1=aabb[0],
+                            y1=aabb[1],
+                            x2=aabb[2],
+                            y2=aabb[3],
+                            label=obj.label,
+                            color=QColor("red"),
+                            font_opacity=0.5,
+                            opacity=0.2
+                        )
+                        drawable_two = OrientedBox(
+                            center_x=obj.bounding_box.xc,
+                            center_y=obj.bounding_box.yc,
+                            width=obj.bounding_box.w,
+                            height=obj.bounding_box.h,
+                            angle_rad=obj.bounding_box.angle_rad,
+                            color=QColor("blue"),
+                            opacity=0.5
+                        )
+                        new_drawables.append(drawable)
+                        new_drawables.append(drawable_two)
 
-            if args.overlay_detections and overlay is not None:
-                overlay.add_drawables(new_drawables)
+                    if args.overlay_detections and overlay is not None:
+                        overlay.add_drawables(new_drawables)
 
-            if getattr(args, "preview_detections", False) and preview is not None:
-                # print(f"Preview frame has {len(preview._drawables)} drawables")
-                preview.set_frame(frame)
-                # print(f"Preview frame has {len(preview._drawables)} drawables")
-                preview.add_drawables(new_drawables)
-                # print(f"Preview frame has {len(preview._drawables)} drawables")
+                    if getattr(args, "preview_detections", False) and preview is not None:
+                        preview.set_frame(frame)
+                        preview.add_drawables(new_drawables)
 
-        # Check for expired tracking and notify
-        expired = tracker.expire_missing(3)
-        for obj in expired:
-            logger.debug(f"Expired missing object: {obj}")
-        expired = tracker.expire_not_seen(0.5)
-        for obj in expired:
-            logger.debug(f"Expired not seen object: {obj}")
+            # Check for expired tracking and notify
+            expired = tracker.expire_missing(3)
+            for obj in expired:
+                logger.debug(f"Expired missing object: {obj}")
+            expired = tracker.expire_not_seen(0.5)
+            for obj in expired:
+                logger.debug(f"Expired not seen object: {obj}")
 
-        if DEBUG and args.inspect:
-            if DEBUG_CURRENT_CROP is not None:
-                inspect_path = Path(args.inspect_path)
-                inspect_path.parent.mkdir(parents=True, exist_ok=True)
-                current_crop_filename = inspect_path.with_name("debug_current_crop.png")
-                cv2.imwrite(str(current_crop_filename), DEBUG_CURRENT_CROP)
+            if DEBUG and args.inspect:
+                if DEBUG_CURRENT_CROP is not None:
+                    inspect_path = Path(args.inspect_path)
+                    inspect_path.parent.mkdir(parents=True, exist_ok=True)
+                    current_crop_filename = inspect_path.with_name("debug_current_crop.png")
+                    cv2.imwrite(str(current_crop_filename), DEBUG_CURRENT_CROP)
 
-        await schedule_tick(tick_start)
+            await schedule_tick(tick_start)
 
 
 def main() -> None:
