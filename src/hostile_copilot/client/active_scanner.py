@@ -1,5 +1,8 @@
 from __future__ import annotations
 import ctypes
+
+from hostile_copilot.client.components.ui.drawable_surface import DrawableSurface
+from hostile_copilot.ping_analyzer.common import PingAnalysis
 ctypes.windll.user32.SetProcessDpiAwarenessContext(-4)
 
 # Suppress QT DPI warnings
@@ -25,6 +28,7 @@ from PySide6.QtCore import QTimer
 from PySide6.QtGui import QColor, QGuiApplication
 from PySide6.QtWidgets import QApplication
 import qasync
+import re
 import signal
 import sys
 import time
@@ -35,7 +39,7 @@ from ultralytics import YOLO
 from hostile_copilot.scan_reader import CRNNLoader, CRNN, get_crnn_transform, DecodeUtils
 from hostile_copilot.config import load_config, OmegaConfig
 from hostile_copilot.ping_analyzer import PingAnalyzer, PingAnalysisResult, PingPrediction, PingUnknown
-from hostile_copilot.client.components.ui import Overlay, CanvasWindow
+from hostile_copilot.client.components.ui import Overlay, CanvasWindow, DrawableSurface
 from hostile_copilot.client.components.ui.components import Drawable, Box, LabeledBox, OrientedBox, Polygon, TextBox
 from hostile_copilot.utils.debug.profiler import Profiler
 from hostile_copilot.utils.geometry import BoundingBoxLike, OrientedBoundingBox, is_overlapping
@@ -245,7 +249,7 @@ class ScanReader:
         if path is not None:
             self._inspect_path = path
 
-    def predict(self, crop: np.ndarray) -> str:
+    def predict(self, crop: np.ndarray) -> (str, float):
         crop_rgb = crop[:, :, ::-1]
         pil_image = Image.fromarray(crop_rgb).convert("L")
 
@@ -264,7 +268,7 @@ class ScanReader:
                 prediction, confidence = DecodeUtils.greedy_decode_with_confidence(self._vocabulary, logits)
         
         logger.info(f"Reader prediction: {prediction} ({confidence:.2f})")
-        return prediction
+        return prediction, confidence
 
     @classmethod
     def _tensor_to_PIL(cls, img_tensor: torch.Tensor) -> Image.Image:
@@ -293,6 +297,130 @@ class ScanReader:
 
         # Convert to PIL
         return Image.fromarray(arr, mode="L")
+
+
+class ScanDisplay:
+    def __init__(self, config: dict[str, Any]= {}):
+        # Merge config overrides with default config
+        default_config = self._default_config()
+        default_config.update(config)
+        self._config = default_config
+
+        self.current_scan: PingAnalysisResult | None = None
+        self._decay_param: float = 0.0
+        self._confidence = 0.0
+        self._was_updated = False
+
+
+    def _default_config(self) -> dict[str, Any]:
+        return {
+            "detect_min": 2,
+            "confidence_threshold": 0.60,
+            "confidence_dropout": 0.40
+        }
+
+    def tick(self):
+        if not self._was_updated:
+            self._confidence *= 0.9
+        self._was_updated = False
+
+    def update_prediction(self, ping: PingAnalysis, confidence: float):
+        print(f"Updating prediction: {ping} ({confidence:.2f})")
+        self._was_updated = True
+        # Cases
+        # 1 - PingUnknown.. should decay confidence on showing current ping
+        # 2 - PingAnalysisResult (high confidence) - should promote displaying
+        #     new ping value
+        # 3 - PingAnalysisResult (low confidence) - should decay trust in
+        #     displaying current ping value... logically multiple low confidence
+        #     alternatives which are consistent.. should promote a new value.
+        #     TODO.... figure that shit out.. it's confusing when to clear and
+        #     what to cache.
+        
+        if isinstance(ping, PingUnknown):
+            # Decay confidence when we see unknown
+            self._confidence *= 0.9
+            return
+        
+        assert isinstance(ping, PingAnalysisResult), f"Received unsupported ping {type(ping)}"
+        valid_ping: PingAnalysisResult = ping
+
+        if self.current_scan is None:
+            self.current_scan = valid_ping
+            self._confidence = confidence
+            return
+        
+        if self.current_scan.rs_value == valid_ping.rs_value:
+            # Same value, just increase confidence
+            self._confidence = min(1.0, (self._confidence + confidence + 0.1) / 2)
+            return
+        
+        # Different value - decay confidence and update
+        self._confidence *= 0.5
+
+        if self._confidence < self._config["confidence_dropout"]:
+            # Drop scan when confidence drops too low
+            self.current_scan = None
+            self._confidence = 0.0
+            return
+
+        if self.current_scan is None or confidence > self._confidence:
+            # Promote new ping with higher confidence
+            self.current_scan = valid_ping
+            # TODO: Consider whether to reset confidence or blend
+            self._confidence = confidence
+            return
+
+
+    def draw_HUD(self, display: DrawableSurface):
+        if self.current_scan is None or self._confidence < self._config["confidence_threshold"]:
+            return
+        
+        margin = (40, 20)
+        min_bbox = (200, 50)
+
+        width = display.surface_width()
+        height = display.surface_height()
+
+        center_x = width // 2
+        center_y = height // 8
+
+        display_text = self._render_ping()
+
+        text_box = TextBox(
+            x=center_x,
+            y=center_y,
+            text=display_text,
+            anchor="center",
+            font_size=24
+        )
+
+        bbox_width = max(text_box.width() + margin[0] * 2, min_bbox[0])
+        bbox_height = max(text_box.height() + margin[1] * 2, min_bbox[1])
+
+        bounding_box = LabeledBox(
+            x1=center_x - bbox_width,
+            y1=center_y - bbox_height,
+            x2=center_x + bbox_width,
+            y2=center_y + bbox_height,
+            label="RS Scan Result"
+        )
+
+        display.add_drawable(text_box)
+        display.add_drawable(bounding_box)
+
+    def _render_ping(self) -> str:
+        if self.current_scan is None:
+            return "No scan data"
+
+        msg = ""
+        for detection in self.current_scan.prediction:
+            if detection.count > 1:
+                msg += f"{detection.count}x {detection.label}"
+            else:
+                msg += f"{detection.label}"
+        
+        return msg
 
 def class_color(class_id: int, total_classes: int = 20, opacity=1.0) -> QColor:
     # distribute hues evenly around the color wheel
@@ -412,6 +540,7 @@ def process_ping_scans(
     scan_reader: ScanReader,
     ping_analyzer: PingAnalyzer,
     tracker: ObjectTracker,
+    scan_display: ScanDisplay,
     overlay: Overlay | None = None,
     preview: CanvasWindow | None = None
 ):
@@ -439,65 +568,79 @@ def process_ping_scans(
         if previous_text:
             tracker.set_metadata(obj.id, "previous_text", previous_text)
 
-        text = scan_reader.predict(crop)
+        text, confidence = scan_reader.predict(crop)
         tracker.set_metadata(obj.id, "text", text)
 
-        # TODO: move this somewhere stable
-        if obj.count_seen > 1:
-            try:
-                rs_value = float(text.replace(",", ""))
-                result = ping_analyzer.analyze(rs_value)
+        try:
+            # TODO: filter out fucked up sequences like "3,32"
+            # RE for valid formatted integers with , separators (3 digits)
+            valid_re = r"^\d{1,3}(,\d{3})*$"
+            if not re.match(valid_re, text):
+                raise ValueError("Invalid format")
+            rs_text = text.replace(",", "")
+            rs_value = float(rs_text)
+            result = ping_analyzer.analyze(rs_value)
+            scan_display.update_prediction(result, confidence)
+        except Exception as e:
+            logger.warning(f"Failed to process ping scan: {e}")
+            scan_display.update_prediction(PingUnknown(0), confidence)
 
-                if not isinstance(result, PingUnknown):
-                    prediction: PingPrediction = result.prediction
-                    
-                    render_text = ""
-                    for detection in prediction.prediction:
-                        msg = f"  Detection: {detection.count}x {detection.label}"
-                        render_text += msg + "\n"
-                        print(msg)
-                    
-                    box_width  = 200
-                    box_height = 50
-                    if overlay:
-                        center_x = overlay.surface_width() // 2
-                        center_y = overlay.surface_height() // 8
-                        text_box = TextBox(
-                            x=center_x,
-                            y=center_y,
-                            text=render_text,
-                            anchor='center',
-                            font_size=18
-                        )
-                        overlay.add_drawable(text_box)
-                        overlay.add_drawable(LabeledBox(
-                            x1=center_x - box_width,
-                            y1=center_y - box_height,
-                            x2=center_x + box_width,
-                            y2=center_y + box_height,
-                            label="Ping Analysis",
-                        ))
-                    
-                    if preview:
-                        center_x = preview.surface_width() // 2
-                        center_y = preview.surface_height() // 8
-                        text_box = TextBox(x=center_x, y=center_y, text=render_text, anchor='center', font_size=18)
-                        preview.add_drawable(text_box)
-                        preview.add_drawable(LabeledBox(
-                            x1=center_x - box_width,
-                            y1=center_y - box_height,
-                            x2=center_x + box_width,
-                            y2=center_y + box_height,
-                            label="Ping Analysis",
-                            color=(255, 255, 0)
-                        ))
+        # # TODO: move this somewhere stable
+        # if obj.count_seen > 1:
+        #     try:
+        #         rs_value = float(text.replace(",", ""))
+        #         result = ping_analyzer.analyze(rs_value)
 
-            except ValueError as e:
-                logger.warning(f"Failed to parse RS value from text '{text}': {e}")
-            except Exception as e:
-                import traceback
-                traceback.print_exc()
-                logger.error(f"Unexpected error analyzing ping: {e}")
+        #         if not isinstance(result, PingUnknown):
+        #             prediction: PingPrediction = result.prediction
+                    
+        #             render_text = ""
+        #             for detection in prediction.prediction:
+        #                 msg = f"  Detection: {detection.count}x {detection.label}"
+        #                 render_text += msg + "\n"
+        #                 print(msg)
+                    
+        #             box_width  = 200
+        #             box_height = 50
+        #             if overlay:
+        #                 center_x = overlay.surface_width() // 2
+        #                 center_y = overlay.surface_height() // 8
+        #                 text_box = TextBox(
+        #                     x=center_x,
+        #                     y=center_y,
+        #                     text=render_text,
+        #                     anchor='center',
+        #                     font_size=18
+        #                 )
+        #                 overlay.add_drawable(text_box)
+        #                 overlay.add_drawable(LabeledBox(
+        #                     x1=center_x - box_width,
+        #                     y1=center_y - box_height,
+        #                     x2=center_x + box_width,
+        #                     y2=center_y + box_height,
+        #                     label="Ping Analysis",
+        #                 ))
+                    
+        #             if preview:
+        #                 center_x = preview.surface_width() // 2
+        #                 center_y = preview.surface_height() // 8
+        #                 text_box = TextBox(x=center_x, y=center_y, text=render_text, anchor='center', font_size=18)
+        #                 preview.add_drawable(text_box)
+        #                 preview.add_drawable(LabeledBox(
+        #                     x1=center_x - box_width,
+        #                     y1=center_y - box_height,
+        #                     x2=center_x + box_width,
+        #                     y2=center_y + box_height,
+        #                     label="Ping Analysis",
+        #                     color=(255, 255, 0)
+        #                 ))
+
+        #     except ValueError as e:
+        #         logger.warning(f"Failed to parse RS value from text '{text}': {e}")
+        #     except Exception as e:
+        #         import traceback
+        #         traceback.print_exc()
+        #         logger.error(f"Unexpected error analyzing ping: {e}")
 
         if text != previous_text:
             tracker.set_metadata(obj.id, "time_changed", time.time())
@@ -506,7 +649,6 @@ def process_ping_scans(
         # TODO: show detected text here?
         logger.debug(f"  Processing TrackedObject [{obj.id}] {obj.label} - {obj.bounding_box}")
     
-
 
 def save_detection(crop: np.ndarray, detection: DetectedObject, args: argparse.Namespace) -> None:
     # Ensure output directory exists
@@ -661,7 +803,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
     
 
-
 async def run_app(args: argparse.Namespace):
     setup_logging(args.verbose, args.debug)
 
@@ -704,6 +845,8 @@ async def run_app(args: argparse.Namespace):
         overlay = Overlay()
         overlay.showOnScreen(screen)
     
+    scan_display = ScanDisplay()
+
     if args.preview_detections:
         screens = QGuiApplication.screens()
         preview_monitor = args.preview_monitor if args.preview_monitor is not None else args.monitor
@@ -712,6 +855,8 @@ async def run_app(args: argparse.Namespace):
         preview = CanvasWindow()
         preview.showOnScreen(screen)
 
+    # QT Seems to need a moment to pull its head out of its ass.. 
+    # Give it a hot second to establish the window before proceeding.
     time.sleep(0.5)
 
     if args.monitor is None:
@@ -780,7 +925,7 @@ async def run_app(args: argparse.Namespace):
         if preview is not None:
             preview.clear_drawables()
             
-        process_ping_scans(tracked_objects, frame, scan_reader, ping_analyzer, tracker, overlay, preview)
+        process_ping_scans(tracked_objects, frame, scan_reader, ping_analyzer, tracker, scan_display, overlay, preview)
 
         new_detections = tracker.query(criteria_new_persistent)
 
@@ -794,6 +939,14 @@ async def run_app(args: argparse.Namespace):
                 check_save_detection(crop, detection, tracker, args)
 
             tracker.set_metadata(detection.id, "time_processed", time.time())
+
+        scan_display.tick()
+
+        if args.overlay_enabled:
+            scan_display.draw_HUD(overlay)
+
+        if args.preview_detections:
+            scan_display.draw_HUD(preview)
 
         # Build drawables for both overlay and preview window
         if args.overlay_detections or args.preview_detections:

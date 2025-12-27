@@ -17,6 +17,22 @@ class TextBox(Drawable, TextComponent):
     text: str = ""
     anchor: Anchor | None = "top_left"
 
+    def width(self) -> int:
+        (width, _) = self._get_dimensions()
+        return width
+    
+    def height(self) -> int:
+        (_, height) = self._get_dimensions()
+        return height
+
+    def _get_dimensions(self) -> tuple[int, int]:
+        font = QFont(self.font_name, self.font_size)
+        
+        metrics = QFontMetrics(font)
+        rect = metrics.boundingRect(self.text)
+        
+        return (rect.width(), rect.height())
+
     def draw(self, painter: QPainter) -> None:
         if not self.text:
             return
