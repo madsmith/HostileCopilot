@@ -517,7 +517,8 @@ def save_detection(crop: np.ndarray, detection: DetectedObject, args: argparse.N
     # Save crop
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     filename = f"{label_norm}_{detection.id}_{timestamp}.png"
-    cv2.imwrite(str(output_path / filename), crop)
+    file_path = output_path / filename
+    cv2.imwrite(str(file_path), crop)
 
     # TODO: proper arg to enable this
     if args.inspect:
@@ -637,7 +638,11 @@ def parse_args() -> argparse.Namespace:
         "--inspect-reader-path", type=str, default="screenshots/last_reader.png",
         help="File path for inspected reader frame. Default: %(default)s"
     )
-    advanced_group.add_argument("--overlay-detections", action="store_true", help="Overlay detections on camera feed")
+    advanced_group.add_argument(
+        "--overlay-enabled", action="store_true", default=False,
+        help="Open an overlay window showing detected scans."
+    )
+    advanced_group.add_argument("--overlay-detections", action="store_true", help="Overlay detections on camera feed. Implies overlay enabled.")
     
     advanced_group.add_argument(
         "--overlay-monitor", type=int, default=None,
@@ -690,7 +695,7 @@ async def run_app(args: argparse.Namespace):
 
     overlay: Overlay | None = None
     preview: CanvasWindow | None = None
-    if args.overlay_detections:
+    if args.overlay_detections or args.overlay_enabled:
         screens = QGuiApplication.screens()
         overlay_monitor = args.overlay_monitor if args.overlay_monitor is not None else args.monitor
         screen = screens[overlay_monitor - 1]
@@ -706,6 +711,8 @@ async def run_app(args: argparse.Namespace):
         logger.info(f"Showing preview on screen {preview_monitor}")
         preview = CanvasWindow()
         preview.showOnScreen(screen)
+
+    time.sleep(0.5)
 
     if args.monitor is None:
         camera = Camera()
