@@ -4,28 +4,24 @@ from dataclasses import dataclass
 from PySide6.QtGui import QPainter, QColor, QFont, QFontMetrics, QPen
 
 from .box import Box
+from .base import TextComponent
 
 @dataclass
-class LabeledBox(Box):
+class LabeledBox(Box, TextComponent):
     label: str = ""
-    font_name: str = "Arial"
-    font_size: int = 10
-    font_color: QColor | tuple[int, int, int, int] | None = None
-    font_opacity: float | None = None
     
     def __post_init__(self):
-        super().__post_init__()
-        if isinstance(self.font_color, tuple):
-            assert len(self.font_color) == 4
-            self.font_color = QColor(*self.font_color)
-        elif self.font_color is None:
-            # Set font_color to black if luminosity of self.color is too high
+        # Initialize Box first (sets color/opacity)
+        Box.__post_init__(self)
+        # Track whether font_color was provided
+        font_was_none = getattr(self, "font_color", None) is None
+        # Initialize TextComponent to normalize font attributes
+        TextComponent.__post_init__(self)
+        # If no explicit font_color was provided, pick readable color based on box color luminosity
+        if font_was_none:
             luminosity = self.color.redF() * 0.2126 + self.color.greenF() * 0.7152 + self.color.blueF() * 0.0722
-            if luminosity > 0.8:
-                self.font_color = QColor(0, 0, 0, 255)
-            else:
-                self.font_color = QColor(255, 255, 255, 255)
-
+            self.font_color = QColor(0, 0, 0, 255) if luminosity > 0.8 else QColor(255, 255, 255, 255)
+        # Apply opacity fallback to box opacity when font_opacity is not set
         opacity = self.font_opacity or self.opacity
         self.font_color.setAlphaF(opacity)
     

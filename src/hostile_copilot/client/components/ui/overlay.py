@@ -34,11 +34,32 @@ class Overlay(QWidget):
 
         # NOW show fullscreen
         self.showFullScreen()
+        
+    def screen_width(self) -> int:
+        screen = self.screen()
+        if screen is None:
+            # fallback: widget logical width * widget DPR (best effort)
+            dpr = self.devicePixelRatioF() if hasattr(self, "devicePixelRatioF") else 1.0
+            return int(round(self.width() * dpr))
+        dpr = screen.devicePixelRatio()
+        return int(round(screen.geometry().width() * dpr))
 
+    def screen_height(self) -> int:
+        screen = self.screen()
+        if screen is None:
+            dpr = self.devicePixelRatioF() if hasattr(self, "devicePixelRatioF") else 1.0
+            return int(round(self.height() * dpr))
+        dpr = screen.devicePixelRatio()
+        return int(round(screen.geometry().height() * dpr))
 
     def clear_drawables(self) -> None:
         """Clear all drawables and repaint."""
         self._drawables.clear()
+        self.update()
+
+    def add_drawable(self, drawable: Drawable) -> None:
+        """Add a single drawable to the overlay."""
+        self._drawables.append(drawable)
         self.update()
 
     def add_drawables(self, drawables: list[Drawable]) -> None:

@@ -8,18 +8,22 @@ from .base import Drawable
 
 @dataclass
 class Box(Drawable):
-    x1: int
-    y1: int
-    x2: int
-    y2: int
+    x1: int = 0
+    y1: int = 0
+    x2: int = 0
+    y2: int = 0
     color: QColor | tuple[int, int, int, int] = (0, 255, 0, 255)
     opacity: float = 1.0
     thickness: int = 1
     
     def __post_init__(self):
         if isinstance(self.color, tuple):
-            assert len(self.color) == 4
-            self.color = QColor(*self.color)
+            if len(self.color) == 3:
+                self.color = QColor(*self.color, 255)
+            elif len(self.color) == 4:
+                self.color = QColor(*self.color)
+            else:
+                raise ValueError("Color tuple must have 3 or 4 elements")
         self.color.setAlphaF(self.opacity)
     
     def draw(self, painter: QPainter) -> None:

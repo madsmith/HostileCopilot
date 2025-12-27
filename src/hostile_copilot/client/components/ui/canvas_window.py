@@ -12,7 +12,8 @@ from PySide6.QtGui import (
     QCursor,
 )
 from PySide6.QtCore import QRectF, QSize, Qt
-from hostile_copilot.client.components.ui.components import Drawable
+
+from .components import Drawable
 
 
 class CanvasWindow(QWidget):
@@ -65,6 +66,22 @@ class CanvasWindow(QWidget):
         self.show()
         self.raise_()
         self.activateWindow()
+
+    def screen_width(self) -> int:
+        screen = self.screen()
+        if screen is None:
+            dpr = self.devicePixelRatioF() if hasattr(self, "devicePixelRatioF") else 1.0
+            return int(round(self.width() * dpr))
+        dpr = screen.devicePixelRatio()
+        return int(round(screen.geometry().width() * dpr))
+
+    def screen_height(self) -> int:
+        screen = self.screen()
+        if screen is None:
+            dpr = self.devicePixelRatioF() if hasattr(self, "devicePixelRatioF") else 1.0
+            return int(round(self.height() * dpr))
+        dpr = screen.devicePixelRatio()
+        return int(round(screen.geometry().height() * dpr))
 
     def set_frame(self, frame_bgr: np.ndarray) -> None:
         # Convert BGR (cv2) to RGB for Qt
@@ -130,7 +147,22 @@ class CanvasWindow(QWidget):
             self._dragging = False
             self.unsetCursor()
 
-    def set_drawables(self, drawables: list) -> None:
+    def clear_drawables(self) -> None:
+        """Clear all drawables and repaint."""
+        self._drawables.clear()
+        self.update()
+
+    def add_drawable(self, drawable: Drawable) -> None:
+        """Add a single drawable to the overlay."""
+        self._drawables.append(drawable)
+        self.update()
+
+    def add_drawables(self, drawables: list[Drawable]) -> None:
+        """Add a list of drawables to the overlay."""
+        self._drawables.extend(drawables)
+        self.update()
+        
+    def set_drawables(self, drawables: list[Drawable]) -> None:
         self._drawables = drawables
         self.update()
 
@@ -214,6 +246,7 @@ class CanvasWindow(QWidget):
             self._offset_x = 0.0
             self._offset_y = 0.0
             return
+            
         window_width = max(1, self.width())
         window_height = max(1, self.height())
         scale_width = window_width / self._img_width

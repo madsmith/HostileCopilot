@@ -36,7 +36,7 @@ from hostile_copilot.scan_reader import CRNNLoader, CRNN, get_crnn_transform, De
 from hostile_copilot.config import load_config, OmegaConfig
 from hostile_copilot.ping_analyzer import PingAnalyzer, PingAnalysisResult, PingPrediction, PingUnknown
 from hostile_copilot.client.components.ui import Overlay, CanvasWindow
-from hostile_copilot.client.components.ui.components import Drawable, LabeledBox, OrientedBox, Polygon
+from hostile_copilot.client.components.ui.components import Drawable, Box, LabeledBox, OrientedBox, Polygon, TextBox
 from hostile_copilot.utils.debug.profiler import Profiler
 from hostile_copilot.utils.geometry import BoundingBoxLike, OrientedBoundingBox, is_overlapping
 
@@ -378,7 +378,7 @@ def crop_frame(frame: np.ndarray, bounding_box: BoundingBoxLike, fast: bool = Tr
     obb: OrientedBoundingBox = bounding_box
 
     src_corners = np.array(obb.corners(), dtype=np.float32)
-    # Stabalize by rounding to nearest 2 pixels
+    # Stabilize by rounding to nearest 2 pixels
     width  = int(round(obb.w / 2) * 2)
     height = int(round(obb.h / 2) * 2)
 
@@ -413,6 +413,7 @@ def process_ping_scans(
     ping_analyzer: PingAnalyzer,
     tracker: ObjectTracker,
     overlay: Overlay | None = None,
+    preview: CanvasWindow | None = None
 ):
     global DEBUG_CURRENT_CROP
     DEBUG_CURRENT_CROP = None
@@ -442,19 +443,55 @@ def process_ping_scans(
         tracker.set_metadata(obj.id, "text", text)
 
         # TODO: move this somewhere stable
-        try:
-            rs_value = float(text.replace(",", ""))
-            result = ping_analyzer.analyze(rs_value)
+        if obj.count_seen > 1:
+            try:
+                rs_value = float(text.replace(",", ""))
+                result = ping_analyzer.analyze(rs_value)
 
-            if not isinstance(result, PingUnknown):
-                prediction: PingPrediction = result.prediction
-                
-                for detection in prediction.prediction:
-                    print(f"  Detection: {detection.count}x {detection.label}")
-        except ValueError as e:
-            logger.warning(f"Failed to parse RS value from text '{text}': {e}")
-        except Exception as e:
-            logger.error(f"Unexpected error analyzing ping: {e}")
+                if not isinstance(result, PingUnknown):
+                    prediction: PingPrediction = result.prediction
+                    
+                    render_text = ""
+                    for detection in prediction.prediction:
+                        msg = f"  Detection: {detection.count}x {detection.label}"
+                        render_text += msg + "\n"
+                        print(msg)
+                    
+                    
+                    if overlay:
+                        center_x = overlay.screen_width() // 2
+                        center_y = overlay.screen_height() // 8
+                        text_box = TextBox(
+                            x=center_x,
+                            y=center_y,
+                            text=render_text,
+                            anchor='center',
+                            font_size=18
+                        )
+                        overlay.add_drawable(text_box)
+                        overlay.add_drawable(LabeledBox(
+                            x1=center_x-200,
+                            y1=center_y-50,
+                            x2=center_x+200,
+                            y2=center_y+50,
+                            label="Ping Analysis",
+                        ))
+                    
+                    if preview:
+                        center_x = preview.width() // 2
+                        center_y = preview.height() // 2
+                        text_box = TextBox(x=center_x, y=center_y, text=render_text, anchor='center', font_size=18)
+                        preview.add_drawable(text_box)
+                        preview.add_drawable(LabeledBox(x1=center_x-200, y1=center_y-50, x2=center_x+200, y2=center_y+50, label="Ping Analysis"))
+
+                        print(f"Drawing text box at {center_x}, {center_y}")
+                        print(f"Overlay size: {preview.width()}x{preview.height()}")
+            except ValueError as e:
+                logger.warning(f"Failed to parse RS value from text '{text}': {e}")
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                logger.error(f"Unexpected error analyzing ping: {e}")
 
         if text != previous_text:
             tracker.set_metadata(obj.id, "time_changed", time.time())
@@ -462,43 +499,6 @@ def process_ping_scans(
         # logger.info(f"Detected text: {text}")
         # TODO: show detected text here?
         logger.debug(f"  Processing TrackedObject [{obj.id}] {obj.label} - {obj.bounding_box}")
-
-
-def process_detection(
-    crop: np.ndarray,
-    detection: DetectedObject,
-    scan_reader: ScanReader,
-    tracker: ObjectTracker,
-    ping_analyzer: PingAnalyzer
-) -> None:
-    if detection.label != "Ping - Scan":
-        logger.debug(f"Skipping {detection.label}")
-        return
-
-    if crop is None:
-        logger.warning("Fail to detect on missing crop.")
-        return
-
-    last_prediction = tracker.get_metadata(detection.id, "text")
-    if last_prediction is not None:
-        logger.info(f"Last prediction: {last_prediction}")
-
-    text = scan_reader.predict(crop)
-    tracker.set_metadata(detection.id, "text", text)
-
-    logger.info(f"Detected text: {text}")
-
-    # Analyze the ping
-    try:
-        # Parse the text as a number (removing comma formatting)
-        rs_text = text.replace(",", "")
-        rs_value = float(rs_text)
-        
-        result = ping_analyzer.analyze(rs_value)
-        print(result)
-    except ValueError as e:
-        logger.warning(f"Failed to parse RS value from text '{text}': {e}")
-        rs_value = None
     
 
 
@@ -754,7 +754,15 @@ async def run_app(args: argparse.Namespace):
 
         tracked_objects = tracker.update(objects)
 
-        process_ping_scans(tracked_objects, frame, scan_reader, ping_analyzer, tracker, overlay)
+        if overlay is not None:
+            overlay.clear_drawables()
+            overlay.add_drawable(Box(102, 102, 498, 198, color=(0, 255, 0)))
+            print(f"overlay width: {overlay.width()}, height: {overlay.height()}")
+            print(f"Overlay screen width: {overlay.screen_width()}, screen height: {overlay.screen_height()}")
+        if preview is not None:
+            preview.clear_drawables()
+            
+        process_ping_scans(tracked_objects, frame, scan_reader, ping_analyzer, tracker, overlay, preview)
 
         new_detections = tracker.query(criteria_new_persistent)
 
@@ -798,12 +806,14 @@ async def run_app(args: argparse.Namespace):
                 new_drawables.append(drawable_two)
 
             if args.overlay_detections and overlay is not None:
-                overlay.clear_drawables()
                 overlay.add_drawables(new_drawables)
 
             if getattr(args, "preview_detections", False) and preview is not None:
+                # print(f"Preview frame has {len(preview._drawables)} drawables")
                 preview.set_frame(frame)
-                preview.set_drawables(new_drawables)
+                # print(f"Preview frame has {len(preview._drawables)} drawables")
+                preview.add_drawables(new_drawables)
+                # print(f"Preview frame has {len(preview._drawables)} drawables")
 
         # Check for expired tracking and notify
         expired = tracker.expire_missing(3)
