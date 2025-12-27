@@ -33,10 +33,10 @@ class DrawableSurface(Protocol):
         """Replace all drawables with the provided sequence and trigger a repaint."""
         ...
 
-    def screen_width(self) -> int:
-        """Return the physical screen width in pixels for the surface's target screen."""
+    def surface_width(self) -> int:
+        """Return the physical surface width in pixels for the surface's target screen."""
         ...
 
-    def screen_height(self) -> int:
-        """Return the physical screen height in pixels for the surface's target screen."""
+    def surface_height(self) -> int:
+        """Return the physical surface height in pixels for the surface's target screen."""
         ...

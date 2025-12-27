@@ -35,7 +35,7 @@ class Overlay(QWidget):
         # NOW show fullscreen
         self.showFullScreen()
         
-    def screen_width(self) -> int:
+    def surface_width(self) -> int:
         screen = self.screen()
         if screen is None:
             # fallback: widget logical width * widget DPR (best effort)
@@ -44,7 +44,7 @@ class Overlay(QWidget):
         dpr = screen.devicePixelRatio()
         return int(round(screen.geometry().width() * dpr))
 
-    def screen_height(self) -> int:
+    def surface_height(self) -> int:
         screen = self.screen()
         if screen is None:
             dpr = self.devicePixelRatioF() if hasattr(self, "devicePixelRatioF") else 1.0

@@ -460,8 +460,8 @@ def process_ping_scans(
                     box_width  = 200
                     box_height = 50
                     if overlay:
-                        center_x = overlay.screen_width() // 2
-                        center_y = overlay.screen_height() // 8
+                        center_x = overlay.surface_width() // 2
+                        center_y = overlay.surface_height() // 8
                         text_box = TextBox(
                             x=center_x,
                             y=center_y,
@@ -479,8 +479,8 @@ def process_ping_scans(
                         ))
                     
                     if preview:
-                        center_x = preview.screen_width() // 2
-                        center_y = preview.screen_height() // 8
+                        center_x = preview.surface_width() // 2
+                        center_y = preview.surface_height() // 8
                         text_box = TextBox(x=center_x, y=center_y, text=render_text, anchor='center', font_size=18)
                         preview.add_drawable(text_box)
                         preview.add_drawable(LabeledBox(
@@ -638,13 +638,18 @@ def parse_args() -> argparse.Namespace:
         help="File path for inspected reader frame. Default: %(default)s"
     )
     advanced_group.add_argument("--overlay-detections", action="store_true", help="Overlay detections on camera feed")
+    
+    advanced_group.add_argument(
+        "--overlay-monitor", type=int, default=None,
+        help="Monitor number on which to show the overlay.  Based on QT screen numbering, so it may vary from other monitor enumerations."
+    )
     advanced_group.add_argument(
         "--preview-detections", action="store_true", default=False,
         help="Open a window showing the captured frame with detection boxes overlaid."
     )
     advanced_group.add_argument(
-        "--render-monitor", type=int, default=None,
-        help="Monitor number on which to show the preview or overlay.  Based on QT screen numbering, so it may vary from other monitor enumerations."
+        "--preview-monitor", type=int, default=None,
+        help="Monitor number for preview window. Based on QT screen numbering, so it may vary from other monitor enumerations."
     )
 
 
@@ -685,20 +690,22 @@ async def run_app(args: argparse.Namespace):
 
     overlay: Overlay | None = None
     preview: CanvasWindow | None = None
-    if args.overlay_detections or args.preview_detections:
+    if args.overlay_detections:
         screens = QGuiApplication.screens()
-        render_monitor = args.render_monitor if args.render_monitor is not None else args.monitor
-        screen = screens[render_monitor - 1]
+        overlay_monitor = args.overlay_monitor if args.overlay_monitor is not None else args.monitor
+        screen = screens[overlay_monitor - 1]
 
-        if args.overlay_detections:
-            logger.info(f"Showing overlay on screen {render_monitor}")
-            overlay = Overlay()
-            overlay.showOnScreen(screen)
-
-        if args.preview_detections:
-            logger.info(f"Showing preview on screen {render_monitor}")
-            preview = CanvasWindow()
-            preview.showOnScreen(screen)
+        logger.info(f"Showing overlay on screen {overlay_monitor}")
+        overlay = Overlay()
+        overlay.showOnScreen(screen)
+    
+    if args.preview_detections:
+        screens = QGuiApplication.screens()
+        preview_monitor = args.preview_monitor if args.preview_monitor is not None else args.monitor
+        screen = screens[preview_monitor - 1]
+        logger.info(f"Showing preview on screen {preview_monitor}")
+        preview = CanvasWindow()
+        preview.showOnScreen(screen)
 
     if args.monitor is None:
         camera = Camera()
@@ -761,10 +768,8 @@ async def run_app(args: argparse.Namespace):
         tracked_objects = tracker.update(objects)
 
         if overlay is not None:
+            # TODO: introduce a single update approach to updating drawables.
             overlay.clear_drawables()
-            overlay.add_drawable(Box(102, 102, 498, 198, color=(0, 255, 0)))
-            print(f"overlay width: {overlay.width()}, height: {overlay.height()}")
-            print(f"Overlay screen width: {overlay.screen_width()}, screen height: {overlay.screen_height()}")
         if preview is not None:
             preview.clear_drawables()
             

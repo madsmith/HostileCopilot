@@ -67,21 +67,27 @@ class CanvasWindow(QWidget):
         self.raise_()
         self.activateWindow()
 
-    def screen_width(self) -> int:
-        screen = self.screen()
-        if screen is None:
-            dpr = self.devicePixelRatioF() if hasattr(self, "devicePixelRatioF") else 1.0
-            return int(round(self.width() * dpr))
-        dpr = screen.devicePixelRatio()
-        return int(round(screen.geometry().width() * dpr))
+    def surface_width(self) -> int:
+        """
+        Width in drawable coordinate space.
+        Drawables are rendered in image coordinates with a scale of self._scale,
+        so the logical surface width is the source image width. If no image is
+        present, approximate from the current window size divided by scale.
+        """
+        if self._img_width:
+            return int(self._img_width)
+        # Fallback when no image yet: convert window width into drawable space
+        return max(1, int(round(self.width() / max(1e-6, self._scale))))
 
-    def screen_height(self) -> int:
-        screen = self.screen()
-        if screen is None:
-            dpr = self.devicePixelRatioF() if hasattr(self, "devicePixelRatioF") else 1.0
-            return int(round(self.height() * dpr))
-        dpr = screen.devicePixelRatio()
-        return int(round(screen.geometry().height() * dpr))
+    def surface_height(self) -> int:
+        """Height in drawable coordinate space matching paint transform.
+        Drawables are rendered in image coordinates scaled by self._scale, so
+        the logical surface height is the source image height. If no image is
+        present, approximate from the window height divided by scale.
+        """
+        if self._img_height:
+            return int(self._img_height)
+        return max(1, int(round(self.height() / max(1e-6, self._scale))))
 
     def set_frame(self, frame_bgr: np.ndarray) -> None:
         # Convert BGR (cv2) to RGB for Qt
