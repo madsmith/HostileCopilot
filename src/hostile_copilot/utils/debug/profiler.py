@@ -41,13 +41,29 @@ class Profiler:
     _lock: threading.Lock = threading.Lock()
     _stats: Dict[str, _SectionStats] = {}
     _enabled: bool = False
+    _track_nested: bool = False
+    _local: threading.local = threading.local()
 
     def __init__(self, section: str):
         self.section = section
         self._start: Optional[float] = None
+        self._effective_section: str = section
 
     def __enter__(self) -> Profiler:
         if Profiler._enabled:
+            if Profiler._track_nested:
+                stack = getattr(Profiler._local, "stack", None)
+                if stack is None:
+                    stack = []
+                    Profiler._local.stack = stack
+                if stack:
+                    self._effective_section = ".".join([*stack, self.section])
+                else:
+                    self._effective_section = self.section
+                stack.append(self.section)
+            else:
+                self._effective_section = self.section
+
             self._start = time.perf_counter()
         return self
 
@@ -59,11 +75,16 @@ class Profiler:
         end = time.perf_counter()
         duration = end - self._start
         with Profiler._lock:
-            stats = Profiler._stats.get(self.section)
+            stats = Profiler._stats.get(self._effective_section)
             if stats is None:
                 stats = _SectionStats()
-                Profiler._stats[self.section] = stats
+                Profiler._stats[self._effective_section] = stats
             stats.add(duration)
+
+        if Profiler._track_nested:
+            stack = getattr(Profiler._local, "stack", None)
+            if stack:
+                stack.pop()
 
     # ===== Controls =====
     @classmethod
@@ -75,6 +96,10 @@ class Profiler:
         cls._enabled = bool(enabled)
 
     @classmethod
+    def track_nested(cls, enabled: bool = True) -> None:
+        cls._track_nested = bool(enabled)
+
+    @classmethod
     def reset(cls) -> None:
         with cls._lock:
             cls._stats.clear()
@@ -82,19 +107,49 @@ class Profiler:
 
     # ===== Queries =====
     @classmethod
-    def get_average_seconds(cls, section: str) -> float:
+    def get_average_seconds(cls, section_prefix: str, *, exact: bool = False) -> float:
         with cls._lock:
-            stats = cls._stats.get(section)
-            return stats.average() if stats else 0.0
+            items = cls._stats.items()
+            if exact:
+                stats = cls._stats.get(section_prefix)
+                return stats.average() if stats else 0.0
+
+            matched = [
+                st
+                for name, st in items
+                if (
+                    name == section_prefix
+                    or name.startswith(section_prefix + ".")
+                    or name.endswith("." + section_prefix)
+                    or ("." + section_prefix + ".") in name
+                )
+            ]
+            if not matched:
+                return 0.0
+
+            total_count = sum(st.count for st in matched)
+            total_sec = sum(st.total_sec for st in matched)
+            return (total_sec / total_count) if total_count else 0.0
 
     @classmethod
-    def get_stats(cls, section: str) -> Optional[_SectionStats]:
+    def get_stats(cls, section_prefix: str, *, exact: bool = False) -> Dict[str, _SectionStats]:
         with cls._lock:
-            stats = cls._stats.get(section)
-            # Return a copy to avoid external mutation
-            if stats is None:
-                return None
-            return _SectionStats(stats.count, stats.total_sec, stats.min_sec, stats.max_sec)
+            if exact:
+                stats = cls._stats.get(section_prefix)
+                if stats is None:
+                    return {}
+                return {section_prefix: _SectionStats(stats.count, stats.total_sec, stats.min_sec, stats.max_sec)}
+
+            results: Dict[str, _SectionStats] = {}
+            for name, stats in cls._stats.items():
+                if (
+                    name == section_prefix
+                    or name.startswith(section_prefix + ".")
+                    or name.endswith("." + section_prefix)
+                    or ("." + section_prefix + ".") in name
+                ):
+                    results[name] = _SectionStats(stats.count, stats.total_sec, stats.min_sec, stats.max_sec)
+            return results
 
     @classmethod
     def dump(cls, file: Optional[TextIO] = None) -> None:
