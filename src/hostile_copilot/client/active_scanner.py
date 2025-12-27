@@ -385,8 +385,8 @@ class ScanDisplay:
             logger.debug("Prediction: Not enough confidence to display scan")
             return
         
-        margin = (20, 6)
-        min_bbox = (100, 30)
+        margin = (24, 14)
+        min_bbox = (200, 60)
 
         width = display.surface_width()
         height = display.surface_height()
@@ -410,11 +410,12 @@ class ScanDisplay:
         bbox_height = max(text_box.height() + margin[1] * 2, min_bbox[1])
 
         bounding_box = LabeledBox(
-            x1=center_x - bbox_width,
-            y1=center_y - bbox_height,
-            x2=center_x + bbox_width,
-            y2=center_y + bbox_height,
-            label="RS Scan Result"
+            x1=center_x - bbox_width  // 2,
+            y1=center_y - bbox_height // 2,
+            x2=center_x + bbox_width  // 2,
+            y2=center_y + bbox_height // 2,
+            label="RS Scan Result",
+            label_color=(20, 20, 20, 255)
         )
 
         display.add_drawable(text_box)
