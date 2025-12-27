@@ -24,7 +24,7 @@ class RateLimiter:
         return False
 
 class RateLimiters:
-    def __init__(self, default_interval: float):
+    def __init__(self, default_interval: float = 1.0):
         self._rate_limiters: dict[str, RateLimiter] = {}
         self._default_interval = default_interval
 
