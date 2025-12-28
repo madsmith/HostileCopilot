@@ -195,7 +195,8 @@ ping_analysis_agent:
     1790: "Obsidian",
     1820: "Quartzite",
     1730: "Shale",
-    620: "Large Gem"
+    620: "Large Gem",
+    500: "Pingla Seeds"
   }
   debug: true
   debug_path: "screenshots/ping_analysis"
@@ -221,6 +222,7 @@ ping_analyzer:
     {rs_value: 1840, label: "Gneiss",          classification: "Boulder",  location_group: "surface"},
     {rs_value: 1920, label: "Granite",         classification: "Boulder",  location_group: "surface"},
     {rs_value: 1950, label: "Igneous",         classification: "Boulder",  location_group: "surface"},
+    {rs_value: 500,  label: "Pingla Seeds",    classification: "Plant",    location_group: "surface"}
   ]
     
 
