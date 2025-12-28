@@ -594,7 +594,6 @@ def process_ping_scans(
             result = ping_analyzer.analyze(rs_value)
             scan_display.update_prediction(result, confidence)
         except ValueError as e:
-            logger.warning(f"Failed to process ping scan: {e}")
             scan_display.update_prediction(PingUnknown(0), confidence)
         except Exception as e:
             logger.warning(f"Failed to process ping scan: {e}")
@@ -618,7 +617,7 @@ def save_detection(crop: np.ndarray, detection: DetectedObject, args: argparse.N
 
     # Save crop
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    filename = f"{label_norm}_{detection.id}_{timestamp}.png"
+    filename = f"{label_norm}_{timestamp}_{detection.id}.png"
     file_path = output_path / filename
     cv2.imwrite(str(file_path), crop)
 
@@ -889,9 +888,11 @@ async def run_app(args: argparse.Namespace):
             new_detections = tracker.query(criteria_new_persistent)
 
             for detection in new_detections:
-                output("Detected new object:", detection)
+                if args.all_labels or detection.label in args.label:
+                    output("Detected new object:", detection)
 
-                crop = crop_frame(frame, detection.bounding_box)
+                with Profiler("crop_frame"):
+                    crop = crop_frame(frame, detection.bounding_box)
 
                 if args.save:
                     with Profiler("save_detections"):
