@@ -1,6 +1,10 @@
 from typing import Any
 from omegaconf import OmegaConf, DictConfig, ListConfig, MISSING
 from pathlib import Path
+from typing import overload, Type, TypeVar
+
+RawConfig = DictConfig | ListConfig
+C = TypeVar("C", bound="OmegaConfig")
 
 class OmegaConfig:
     def __init__(self, config: DictConfig | ListConfig):
@@ -64,11 +68,12 @@ class OmegaConfig:
             raise ValueError(f"Config must be a DictConfig or ListConfig at \"{highlighted}\"")
 
     def __getattr__(self, name: str) -> Any:
+        if name.startswith("_"):
+            raise AttributeError(name)
         return self.get(name)
 
     def __setattr__(self, name: str, value: Any) -> None:
-        properties = ["_config"]
-        if name in properties:
+        if name.startswith("_"):
             super().__setattr__(name, value)
             return
 
@@ -80,7 +85,19 @@ class OmegaConfig:
     def __repr__(self) -> str:
         return f"NexusConfig({repr(self._config)})"
 
+@overload
 def load_config(config_file: Path | str | None = None) -> OmegaConfig:
+    ...
+
+@overload
+def load_config(config_file: Path | str | None = None, *, wrapper: None = None) -> RawConfig:
+    ...
+
+@overload
+def load_config(config_file: Path | str | None = None, *, wrapper: Type[C]) -> C:
+    ...
+
+def load_config(config_file: Path | str | None = None, *, wrapper: Type[C] | None = OmegaConfig):
     if config_file is None:
         config_file = Path("config/config.yaml")
     elif isinstance(config_file, str):
@@ -100,4 +117,4 @@ def load_config(config_file: Path | str | None = None) -> OmegaConfig:
     if 'private' in config:
         del config['private'] # type: ignore
 
-    return OmegaConfig(config)
+    return wrapper(config) if wrapper is not None else config

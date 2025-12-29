@@ -1,0 +1,32 @@
+app:
+    verbose: False
+    fps: null
+    confidence: null
+    overlay:
+        enabled: False
+        show_detections: False
+        monitor: null
+    debug:
+        enable: False
+        profiler: False
+        inspect:
+            full_frame:
+                enable: False
+                file_path: screenshots/last_frame.png
+                interval: 1
+            digit_reader_frame:
+                enable: False
+                file_path: screenshots/last_digit_reader_frame.png
+    training:
+        save: null
+        save_dir: captures
+        labels: ['Ping - Scan']
+        min_capture_interval: 3.0
+    ai:
+        device: cuda
+        detector:
+            model: scanner.pt
+        reader:
+            model: digit_reader.pt
+
+      

@@ -1,7 +1,10 @@
 from __future__ import annotations
 import ctypes
 
+from torch._prims import RETURN_TYPE
+
 from hostile_copilot.client.components.ui.drawable_surface import DrawableSurface
+from hostile_copilot.config.app_config import DefaultsExtractor
 from hostile_copilot.ping_analyzer.common import PingAnalysis
 ctypes.windll.user32.SetProcessDpiAwarenessContext(-4)
 
@@ -37,13 +40,15 @@ from typing import Any, Callable
 from ultralytics import YOLO
 
 from hostile_copilot.scan_reader import CRNNLoader, CRNN, get_crnn_transform, DecodeUtils
-from hostile_copilot.config import load_config, OmegaConfig
+from hostile_copilot.config import load_config, OmegaConfig, AppConfig
+from hostile_copilot.client.config.active_scanner import ActiveScannerBindings
+
 from hostile_copilot.ping_analyzer import PingAnalyzer, PingAnalysisResult, PingPrediction, PingUnknown
 from hostile_copilot.client.components.ui import Overlay, CanvasWindow, DrawableSurface
 from hostile_copilot.client.components.ui.components import Drawable, Box, LabeledBox, OrientedBox, Polygon, TextBox
 from hostile_copilot.utils.debug.profiler import Profiler
 from hostile_copilot.utils.geometry import BoundingBoxLike, OrientedBoundingBox, is_overlapping
-from hostile_copilot.utils.rate_limiter import RateLimiters
+from hostile_copilot.utils.rate_limiter import RateLimiters, RateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -243,13 +248,16 @@ class ScanReader:
         self._device = device
         self._inspect_enabled = False
         self._inspect_path = "screenshots/last_reader.png"
+        self._inspect_limiter: RateLimiter | None = None
 
         assert self._vocabulary is not None, "Reader model must have an alphabet"
 
-    def enable_inspection(self, path: Path | None = None) -> None:
+    def enable_inspection(self, path: Path | None = None, interval: int | None = None) -> None:
         self._inspect_enabled = True
         if path is not None:
             self._inspect_path = path
+        if interval is not None:
+            self._inspect_limiter = RateLimiter(interval)
 
     def predict(self, crop: np.ndarray) -> (str, float):
         crop_rgb = crop[:, :, ::-1]
@@ -658,13 +666,31 @@ def setup_logging(verbose: bool, debug: bool) -> None:
         logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] %(message)s')
 
 
-def parse_args() -> argparse.Namespace:
+def setup_inspector(app_config: AppConfig) -> None:
+    if app_config.inspect_frame:
+        output_path = Path(app_config.inspect_frame_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if app_config.inspect_digit_reader_frame:
+        output_path = Path(app_config.inspect_digit_reader_frame_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+
+async def schedule_tick(tick_start: float):
+    with Profiler("sleep"):
+        now = time.time()
+        delay = max(0, tick_start + tick_interval - now)
+        # Need to sleep at least 0 to allow QT to process via qasync
+        await asyncio.sleep(delay)
+
+
+def parse_args() -> tuple[argparse.Namespace, dict[str, Any]]:
     parser = argparse.ArgumentParser(description="Active ping scanner for Star Citizen.")
 
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose output")
     parser.add_argument(
-        "--monitor", "--mon", "-m", type=int, default=None,
+        "--monitor", "--mon", "-m", type=int, default=argparse.SUPPRESS,
         help="Specify which monitor to capture display from based on numerical index.  Numbering is based on MSS library so ordering may vary."
     )
     parser.add_argument(
@@ -676,9 +702,9 @@ def parse_args() -> argparse.Namespace:
         help="Minimum confidence threshold for detections. Default: %(default)s"
     )
 
-    extraction_group = parser.add_argument_group("Extraction")
+    extraction_group = parser.add_argument_group("Training Extraction")
     extraction_group.add_argument(
-        "--save", "-s", action="store_true",
+        "--save", "-s", action="store_true", default=argparse.SUPPRESS,
         help="Save extracted detections to disk"
     )
     extraction_group.add_argument(
@@ -690,7 +716,7 @@ def parse_args() -> argparse.Namespace:
         help="Save all labels to disk"
     )
     extraction_group.add_argument(
-        "--label", "-l", type=str, nargs="+", default=[],
+        "--label", "-l", type=str, default=[], action="append",
         help="Specify a label to save. Can be specified multiple times."
     )
     extraction_group.add_argument(
@@ -731,7 +757,7 @@ def parse_args() -> argparse.Namespace:
         "--inspect-reader", action="store_true", help="Inspect reader output by writing frames intermittently to disk."
     )
     advanced_group.add_argument(
-        "--inspect-reader-path", type=str, default="screenshots/last_reader.png",
+        "--inspect-reader-path", type=str, default="screenshots/last_digit_reader_frame.png",
         help="File path for inspected reader frame. Default: %(default)s"
     )
     advanced_group.add_argument(
@@ -753,11 +779,13 @@ def parse_args() -> argparse.Namespace:
         help="Monitor number for preview window. Based on QT screen numbering, so it may vary from other monitor enumerations."
     )
 
-    return parser.parse_args()
+    arg_defaults = DefaultsExtractor(parser).extract()
+
+    return parser.parse_args(), arg_defaults
     
 
-async def run_app(args: argparse.Namespace):
-    setup_logging(args.verbose, args.debug)
+async def run_app(app_config: AppConfig, args: argparse.Namespace):
+    setup_logging(app_config.verbose, app_config.debug)
 
     if args.profiler:
         Profiler.enable()
@@ -765,34 +793,37 @@ async def run_app(args: argparse.Namespace):
     
     config: OmegaConfig = load_config()
 
-    inspect_path = Path(args.inspect_path)
-    inspect_path.parent.mkdir(parents=True, exist_ok=True)
-
-    device = torch.device(args.device)
+    setup_inspector(app_config)
+    
+    device = torch.device(app_config.device)
 
     detector_model: YOLO = load_detector_model(
-        Path(args.detector_model),
+        Path(app_config.detector_model),
         default_path=DETECTOR_MODEL_PATH,
         device=device
     )
+
     reader_model: CRNN = load_reader_model(
-        Path(args.reader_model),
+        Path(app_config.reader_model),
         default_path=READER_MODEL_PATH,
         device=device
     )
 
     scan_reader = ScanReader(reader_model, device)
-    if args.inspect_reader:
-        scan_reader.enable_inspection(Path(args.inspect_reader_path))
+    if app_config.inspect_digit_reader_frame:
+        scan_reader.enable_inspection(
+            Path(app_config.inspect_digit_reader_frame_path),
+            app_config.inspect_digit_reader_frame_interval
+        )
 
     ping_analyzer = PingAnalyzer(config)
 
     # Setup UI Components
     overlay: Overlay | None = None
     preview: CanvasWindow | None = None
-    if args.overlay_detections or args.overlay_enabled:
+    if app_config.overlay_enabled or app_config.overlay_show_detections:
         screens = QGuiApplication.screens()
-        overlay_monitor = args.overlay_monitor if args.overlay_monitor is not None else args.monitor
+        overlay_monitor = app_config.overlay_monitor or app_config.monitor
         screen = screens[overlay_monitor - 1]
 
         logger.info(f"Showing overlay on screen {overlay_monitor}")
@@ -801,26 +832,26 @@ async def run_app(args: argparse.Namespace):
     
     scan_display = ScanDisplay()
 
-    if args.preview_detections:
+    if app_config.preview_detections:
         screens = QGuiApplication.screens()
-        preview_monitor = args.preview_monitor if args.preview_monitor is not None else args.monitor
+        preview_monitor = app_config.preview_monitor or app_config.monitor
         screen = screens[preview_monitor - 1]
         logger.info(f"Showing preview on screen {preview_monitor}")
         preview = CanvasWindow()
         preview.showOnScreen(screen)
 
-    if args.monitor is None:
+    if not app_config.monitor:
         camera = Camera()
     else:
-        monitor_num = args.monitor - 1
+        monitor_num = app_config.monitor - 1
         camera = Camera(screen_index=monitor_num)
 
     # Establish rate limits
     rl = RateLimiters()
-    for label in args.label:
-        rl.configure(f"save_{label}", interval=args.capture_interval)
+    for label in app_config.label:
+        rl.configure(f"save_{label}", interval=app_config.min_capture_interval)
 
-    tick_interval = 1 / args.fps
+    tick_interval = 1 / app_config.fps
     profile_dump_interval = 10
     profile_dump_schedule_time = time.time() + profile_dump_interval
     last_inspect_camera_save = 0
@@ -828,12 +859,6 @@ async def run_app(args: argparse.Namespace):
     logger.debug(f"Tick interval: {tick_interval}s")
     frame_count = 0
     tracker = ObjectTracker()
-
-    async def schedule_tick(tick_start: float):
-        with Profiler("sleep"):
-            now = time.time()
-            delay = max(0, tick_start + tick_interval - now)
-            await asyncio.sleep(delay)
 
     def criteria_new_persistent(obj: TrackedObject, metadata: dict[str, Any], persistence_age: float = 0.3) -> bool:
         now = time.time()
@@ -969,11 +994,20 @@ def main() -> None:
 
     app = QApplication(sys.argv)
 
-    args = parse_args()
+    args, arg_defaults = parse_args()
+    arg_defaults = arg_defaults | {
+        # Manual defaults go here
+    }
+    
+    try:
+        app_config = AppConfig(ActiveScannerBindings, args, "config/active_scanner.yaml", arg_defaults)
+    except Exception as e:
+        print(f"Error loading config: {e}")
+        return -1
 
-    if args.verbose:
+    if app_config.verbose:
         VERBOSE = True
-    if args.debug:
+    if app_config.debug:
         DEBUG = True
 
     # Setup event loop to communicate with QT
@@ -995,7 +1029,7 @@ def main() -> None:
     # Run the event loop
     with loop:
         try:
-            loop.run_until_complete(run_app(args))
+            loop.run_until_complete(run_app(app_config, args))
         except (KeyboardInterrupt, RuntimeError) as e:
             import traceback
             traceback.print_exc()
