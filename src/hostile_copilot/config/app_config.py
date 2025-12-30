@@ -89,15 +89,12 @@ class AppConfig(OmegaConfig):
         if arg_key and hasattr(self._args, arg_key):
             value = getattr(self._args, arg_key)
             if value is not None:
-                print(f"Resolved by args [{value}]")
                 r_value = value
                 resolved = True and bind.action != "append"
 
         value = self.get(bind.config_path)
         if not resolved and value is not None:
-            print(f"Resolved by config [{value}]")
             if r_value is not None and bind.action == "append" and isinstance(r_value, list):
-                print("Extending")
                 r_value.extend(value)
             else:
                 r_value = value
@@ -106,15 +103,10 @@ class AppConfig(OmegaConfig):
         if self._arg_defaults:
             value = self._arg_defaults.get(bind.arg_key)
             if not resolved and value is not None:
-                print(f"Resolved by arg defaults [{value}]")
                 if r_value is not None and bind.action == "append" and isinstance(r_value, list):
-                    print("Extending")
                     r_value.extend(value)
                 else:
                     r_value = value
                 resolved = True
 
-        if not resolved:
-            print(f"Resolved by None")
-        
         return r_value
