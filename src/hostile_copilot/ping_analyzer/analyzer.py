@@ -48,6 +48,9 @@ class PingAnalyzer:
 
 
     def analyze(self, rs_value: int) -> PingAnalysis:
+        if not rs_value.is_integer():
+            return PingUnknown(rs_value=rs_value)
+        
         # 1. Attempt lookup
         if rs_value in self._lookup_table:
             entry = self._lookup_table[rs_value]
