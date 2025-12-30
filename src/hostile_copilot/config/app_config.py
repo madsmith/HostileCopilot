@@ -4,7 +4,9 @@ from typing import Any, Generic, TypeVar
 
 from hostile_copilot.config import load_config, OmegaConfig
 
+
 T = TypeVar("T")
+
 
 class Bind(Generic[T]):
     def __init__(
@@ -41,10 +43,6 @@ class Bind(Generic[T]):
         )
 
 
-class Bindings:
-    pass
-
-
 class DefaultsExtractor:
     def __init__(self, parser: argparse.ArgumentParser):
         self._parser = parser
@@ -64,22 +62,14 @@ class DefaultsExtractor:
 class AppConfig(OmegaConfig):
     def __init__(
         self,
-        bindings: Bindings,
         args: argparse.Namespace,
         config_path: Path | str | None = None,
-        arg_defaults: dict[str, Any] | None = None,
+        arg_defaults: dict[str, Any] | None = None
     ):
-        if not issubclass(bindings, Bindings):
-            raise ValueError("bindings must be a subclass of Bindings")
-        
         super().__init__(load_config(config_path, wrapper=None))
 
         self._args = args
         self._arg_defaults = arg_defaults
-
-        for name, value in vars(bindings).items():
-            if isinstance(value, Bind):
-                setattr(self.__class__, name, value)
 
     def _resolve_bind(self, bind: Bind) -> T:
         resolved = False

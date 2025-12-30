@@ -40,8 +40,8 @@ from typing import Any, Callable
 from ultralytics import YOLO
 
 from hostile_copilot.scan_reader import CRNNLoader, CRNN, get_crnn_transform, DecodeUtils
-from hostile_copilot.config import load_config, OmegaConfig, AppConfig
-from hostile_copilot.client.config.active_scanner import ActiveScannerBindings
+from hostile_copilot.config import load_config, OmegaConfig
+from hostile_copilot.client.config.active_scanner import ActiveScannerConfig
 
 from hostile_copilot.ping_analyzer import PingAnalyzer, PingAnalysisResult, PingPrediction, PingUnknown
 from hostile_copilot.client.components.ui import Overlay, CanvasWindow, DrawableSurface
@@ -554,7 +554,7 @@ def crop_frame(frame: np.ndarray, bounding_box: BoundingBoxLike, fast: bool = Tr
 
 
 def process_ping_scans(
-    app_config: AppConfig,
+    app_config: ActiveScannerConfig,
     tracked_objects: list[TrackedObject],
     frame: np.ndarray,
     scan_reader: ScanReader,
@@ -615,7 +615,7 @@ def process_ping_scans(
         logger.debug(f"  Processing TrackedObject [{obj.id}] {obj.label} - {obj.bounding_box}")
     
 
-def save_detection(crop: np.ndarray, detection: DetectedObject, app_config: AppConfig) -> None:
+def save_detection(crop: np.ndarray, detection: DetectedObject, app_config: ActiveScannerConfig) -> None:
     # Ensure output directory exists
     label_norm = detection.label.replace(" ", "_").lower()
     output_path = Path(app_config.save_dir) / label_norm
@@ -637,7 +637,7 @@ def save_detection(crop: np.ndarray, detection: DetectedObject, app_config: AppC
         cv2.imwrite(str(inspect_filename), crop)
 
 
-def check_save_detection(crop: np.ndarray, detection: DetectedObject, tracker: ObjectTracker, app_config: AppConfig) -> None:
+def check_save_detection(crop: np.ndarray, detection: DetectedObject, tracker: ObjectTracker, app_config: ActiveScannerConfig) -> None:
     if not app_config.save:
         return
 
@@ -664,7 +664,7 @@ def setup_logging(verbose: bool, debug: bool) -> None:
         logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] %(message)s')
 
 
-def setup_inspector(app_config: AppConfig) -> None:
+def setup_inspector(app_config: ActiveScannerConfig) -> None:
     if app_config.inspect_frame:
         output_path = Path(app_config.inspect_frame_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -784,7 +784,7 @@ def parse_args() -> tuple[argparse.Namespace, dict[str, Any]]:
     return parser.parse_args(), arg_defaults
     
 
-async def run_app(app_config: AppConfig):
+async def run_app(app_config: ActiveScannerConfig):
     setup_logging(app_config.verbose, app_config.debug)
 
     if app_config.profiler:
@@ -989,8 +989,7 @@ def main() -> None:
     }
     
     try:
-        app_config = AppConfig(
-            ActiveScannerBindings,
+        app_config = ActiveScannerConfig(
             args,
             "config/active_scanner.yaml",
             arg_defaults

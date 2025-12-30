@@ -1,6 +1,7 @@
-from hostile_copilot.config.app_config import Bindings, Bind
+from hostile_copilot.config.app_config import AppConfig, Bind
 
-class ActiveScannerBindings(Bindings):
+
+class ActiveScannerConfig(AppConfig):
     # Run options
     monitor = Bind[int]("app.capture.monitor")
     fps = Bind[float]("app.fps")
