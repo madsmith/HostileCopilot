@@ -23,13 +23,37 @@ class RateLimiter:
 
         return False
 
+class NoopRateLimiter(RateLimiter):
+    def __init__(self):
+        super().__init__(0, 0)
+    
+    def check(self) -> bool:
+        return True
+
 class RateLimiters:
     def __init__(self, default_interval: float = 1.0):
         self._rate_limiters: dict[str, RateLimiter] = {}
         self._default_interval = default_interval
 
+    @classmethod
+    def get_instance(cls) -> RateLimiters:
+        if not hasattr(cls, "_instance"):
+            cls._instance = cls()
+        return cls._instance
+
+    @classmethod
+    def configure_limiter(cls, key: str, interval: float, count: int = 1):
+        cls.get_instance().configure(key, interval, count)
+
+    @classmethod
+    def get_limiter(cls, key: str) -> RateLimiter:
+        return cls.get_instance().get(key)
+
     def configure(self, key: str, interval: float, count: int = 1):
-        self._rate_limiters[key] = RateLimiter(interval, count)
+        if not interval:
+            self._rate_limiters[key] = NoopRateLimiter()
+        else:
+            self._rate_limiters[key] = RateLimiter(interval, count)
 
     def get(self, key: str) -> RateLimiter:
         if key not in self._rate_limiters:
