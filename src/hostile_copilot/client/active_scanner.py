@@ -60,7 +60,6 @@ shutdown_requested = asyncio.Event()
 DEBUG = False
 VERBOSE = False
 
-DEBUG_CURRENT_CROP = None
 
 def output(*args):
     """
@@ -268,7 +267,7 @@ class ScanReader:
         img_tensor = img_tensor.to(self._device)
 
         # Convert back to Image and save
-        if self._inspect_enabled:
+        if self._inspect_enabled and (self._inspect_limiter is None or self._inspect_limiter.check()):
             preview_img = self._tensor_to_PIL(img_tensor)
             preview_img.save(self._inspect_path)
         
@@ -555,6 +554,7 @@ def crop_frame(frame: np.ndarray, bounding_box: BoundingBoxLike, fast: bool = Tr
 
 
 def process_ping_scans(
+    app_config: AppConfig,
     tracked_objects: list[TrackedObject],
     frame: np.ndarray,
     scan_reader: ScanReader,
@@ -564,9 +564,6 @@ def process_ping_scans(
     overlay: Overlay | None = None,
     preview: CanvasWindow | None = None
 ):
-    global DEBUG_CURRENT_CROP
-    DEBUG_CURRENT_CROP = None
-
     # TODO: debug
     logger.debug(f"Processing ping scans: {len(tracked_objects)} objects")
     for obj in tracked_objects:
@@ -580,9 +577,10 @@ def process_ping_scans(
         if crop is None:
             logger.warning("Fail to detect on missing crop.")
             continue
-
-        if DEBUG:
-            DEBUG_CURRENT_CROP = crop
+        
+        if app_config.inspect_digit_reader_frame:
+            inspect_path = Path(app_config.inspect_digit_reader_frame_path)
+            cv2.imwrite(str(inspect_path), crop)
 
         previous_text = tracker.get_metadata(obj.id, "text")
         if previous_text:
@@ -598,7 +596,7 @@ def process_ping_scans(
             if not re.match(valid_re, text):
                 raise ValueError(f"Invalid format: {text}")
             rs_text = text.replace(",", "")
-            rs_value = float(rs_text)
+            rs_value = int(rs_text)
             result = ping_analyzer.analyze(rs_value)
             scan_display.update_prediction(result, confidence)
         except ValueError as e:
@@ -617,10 +615,10 @@ def process_ping_scans(
         logger.debug(f"  Processing TrackedObject [{obj.id}] {obj.label} - {obj.bounding_box}")
     
 
-def save_detection(crop: np.ndarray, detection: DetectedObject, args: argparse.Namespace) -> None:
+def save_detection(crop: np.ndarray, detection: DetectedObject, app_config: AppConfig) -> None:
     # Ensure output directory exists
     label_norm = detection.label.replace(" ", "_").lower()
-    output_path = Path(args.save_dir) / label_norm
+    output_path = Path(app_config.save_dir) / label_norm
     output_path.mkdir(parents=True, exist_ok=True)
 
     # Save crop
@@ -630,24 +628,24 @@ def save_detection(crop: np.ndarray, detection: DetectedObject, args: argparse.N
     cv2.imwrite(str(file_path), crop)
 
     # TODO: proper arg to enable this
-    if args.inspect:
+    if app_config.inspect_digit_reader_frame:
         print("Saving inspection frame")
-        inspect_path = Path(args.inspect_path).parent
+        inspect_path = Path(app_config.inspect_digit_reader_frame_path).parent
         inspect_path.mkdir(parents=True, exist_ok=True)
         inspect_filename = inspect_path / "last_detection.png"
         print(f"Saving to {inspect_filename}")
         cv2.imwrite(str(inspect_filename), crop)
 
 
-def check_save_detection(crop: np.ndarray, detection: DetectedObject, tracker: ObjectTracker, args: argparse.Namespace) -> None:
-    if not args.save:
+def check_save_detection(crop: np.ndarray, detection: DetectedObject, tracker: ObjectTracker, app_config: AppConfig) -> None:
+    if not app_config.save:
         return
 
-    if args.all_labels or detection.label in args.label:
-        if not RateLimiters().get(f"save_{detection.label}").check():
+    if app_config.all_labels or detection.label in app_config.labels:
+        if not RateLimiters.get_limiter(f"save_{detection.label}").check():
             return
         
-        save_detection(crop, detection, args)
+        save_detection(crop, detection, app_config)
 
 
 def setup_logging(verbose: bool, debug: bool) -> None:
@@ -670,13 +668,15 @@ def setup_inspector(app_config: AppConfig) -> None:
     if app_config.inspect_frame:
         output_path = Path(app_config.inspect_frame_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        RateLimiters.configure_limiter("inspect_frame", app_config.inspect_frame_interval)
 
     if app_config.inspect_digit_reader_frame:
         output_path = Path(app_config.inspect_digit_reader_frame_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        RateLimiters.configure_limiter("inspect_digit_reader_frame", app_config.inspect_digit_reader_frame_interval)
 
 
-async def schedule_tick(tick_start: float):
+async def schedule_tick(tick_start: float, tick_interval: float):
     with Profiler("sleep"):
         now = time.time()
         delay = max(0, tick_start + tick_interval - now)
@@ -784,10 +784,10 @@ def parse_args() -> tuple[argparse.Namespace, dict[str, Any]]:
     return parser.parse_args(), arg_defaults
     
 
-async def run_app(app_config: AppConfig, args: argparse.Namespace):
+async def run_app(app_config: AppConfig):
     setup_logging(app_config.verbose, app_config.debug)
 
-    if args.profiler:
+    if app_config.profiler:
         Profiler.enable()
         Profiler.track_nested()
     
@@ -847,14 +847,11 @@ async def run_app(app_config: AppConfig, args: argparse.Namespace):
         camera = Camera(screen_index=monitor_num)
 
     # Establish rate limits
-    rl = RateLimiters()
-    for label in app_config.label:
-        rl.configure(f"save_{label}", interval=app_config.min_capture_interval)
+    for label in app_config.labels:
+        RateLimiters.configure_limiter(f"save_{label}", interval=app_config.min_capture_interval)
 
     tick_interval = 1 / app_config.fps
-    profile_dump_interval = 10
-    profile_dump_schedule_time = time.time() + profile_dump_interval
-    last_inspect_camera_save = 0
+    RateLimiters.configure_limiter("profile_dump", interval=app_config.profiler_dump_interval)
 
     logger.debug(f"Tick interval: {tick_interval}s")
     frame_count = 0
@@ -885,18 +882,16 @@ async def run_app(app_config: AppConfig, args: argparse.Namespace):
                 logger.debug(f"Captured frame shape: {frame.shape}")
                 frame_count += 1
 
-            if args.inspect and time.time() > (last_inspect_camera_save + args.inspect_interval):
+            if app_config.inspect and RateLimiters.get_limiter("inspect_frame").check():
                 with Profiler("inspect"):
                     logger.debug("Saving frame...")
                     cv2.imwrite(str(inspect_path), frame)
-                    last_inspect_camera_save = time.time()
 
-            if Profiler.is_enabled() and time.time() > profile_dump_schedule_time:
+            if Profiler.is_enabled() and RateLimiters.get_limiter("profile_dump").check():
                 Profiler.dump()
-                profile_dump_schedule_time = time.time() + profile_dump_interval
 
             with Profiler("process_frame"):
-                objects = process_frame(frame, detector_model, args.confidence)
+                objects = process_frame(frame, detector_model, app_config.confidence)
 
             with Profiler("track_objects"):
                 tracked_objects = tracker.update(objects)
@@ -908,34 +903,34 @@ async def run_app(app_config: AppConfig, args: argparse.Namespace):
                 preview.clear_drawables()
                 
             with Profiler("process_ping_scans"):
-                process_ping_scans(tracked_objects, frame, scan_reader, ping_analyzer, tracker, scan_display, overlay, preview)
+                process_ping_scans(app_config, tracked_objects, frame, scan_reader, ping_analyzer, tracker, scan_display, overlay, preview)
 
             new_detections = tracker.query(criteria_new_persistent)
 
             for detection in new_detections:
-                if args.all_labels or detection.label in args.label:
+                if app_config.all_labels or detection.label in app_config.labels:
                     output("Detected new object:", detection)
 
                 with Profiler("crop_frame"):
                     crop = crop_frame(frame, detection.bounding_box)
 
-                if args.save:
+                if app_config.save:
                     with Profiler("save_detections"):
-                        check_save_detection(crop, detection, tracker, args)
+                        check_save_detection(crop, detection, tracker, app_config)
 
                 tracker.set_metadata(detection.id, "time_processed", time.time())
 
             scan_display.tick()
 
             with Profiler("draw_HUD"):
-                if args.overlay_enabled:
+                if app_config.overlay_enabled:
                     scan_display.draw_HUD(overlay)
 
-                if args.preview_detections:
+                if app_config.preview_detections:
                     scan_display.draw_HUD(preview)
 
             # Build drawables for both overlay and preview window
-            if args.overlay_detections or args.preview_detections:
+            if app_config.overlay_detections or app_config.preview_detections:
                 with Profiler("draw_detections"):
                     new_drawables: list[Drawable] = []
                     for obj in tracked_objects:
@@ -963,10 +958,10 @@ async def run_app(app_config: AppConfig, args: argparse.Namespace):
                         new_drawables.append(drawable)
                         new_drawables.append(drawable_two)
 
-                    if args.overlay_detections and overlay is not None:
+                    if app_config.overlay_detections and overlay is not None:
                         overlay.add_drawables(new_drawables)
 
-                    if getattr(args, "preview_detections", False) and preview is not None:
+                    if getattr(app_config, "preview_detections", False) and preview is not None:
                         preview.set_frame(frame)
                         preview.add_drawables(new_drawables)
 
@@ -978,14 +973,7 @@ async def run_app(app_config: AppConfig, args: argparse.Namespace):
             for obj in expired:
                 logger.debug(f"Expired not seen object: {obj}")
 
-            if DEBUG and args.inspect:
-                if DEBUG_CURRENT_CROP is not None:
-                    inspect_path = Path(args.inspect_path)
-                    inspect_path.parent.mkdir(parents=True, exist_ok=True)
-                    current_crop_filename = inspect_path.with_name("debug_current_crop.png")
-                    cv2.imwrite(str(current_crop_filename), DEBUG_CURRENT_CROP)
-
-            await schedule_tick(tick_start)
+            await schedule_tick(tick_start, tick_interval)
 
 
 def main() -> None:
@@ -997,10 +985,16 @@ def main() -> None:
     args, arg_defaults = parse_args()
     arg_defaults = arg_defaults | {
         # Manual defaults go here
+        "profiler_dump_interval": 10
     }
     
     try:
-        app_config = AppConfig(ActiveScannerBindings, args, "config/active_scanner.yaml", arg_defaults)
+        app_config = AppConfig(
+            ActiveScannerBindings,
+            args,
+            "config/active_scanner.yaml",
+            arg_defaults
+        )
     except Exception as e:
         print(f"Error loading config: {e}")
         return -1
@@ -1029,7 +1023,7 @@ def main() -> None:
     # Run the event loop
     with loop:
         try:
-            loop.run_until_complete(run_app(app_config, args))
+            loop.run_until_complete(run_app(app_config))
         except (KeyboardInterrupt, RuntimeError) as e:
             import traceback
             traceback.print_exc()

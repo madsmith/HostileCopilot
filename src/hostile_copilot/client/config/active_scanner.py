@@ -31,6 +31,7 @@ class ActiveScannerBindings(Bindings):
     verbose = Bind[bool]("app.verbose")
     debug = Bind[bool]("app.debug.enable")
     profiler = Bind[bool]("app.debug.profiler")
+    profiler_dump_interval = Bind[int]("app.debug.profiler_dump_interval")
 
     # Frame Inspection Options
     inspect_frame = Bind[bool]("app.debug.inspect.frame.enable")
