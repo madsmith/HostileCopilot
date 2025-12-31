@@ -30,7 +30,7 @@ class PingAnalyzer:
             r.label: r.location_group for r in config.ping_analyzer.resources
         }
 
-        self._initialize_lookup_tables(18)
+        self._initialize_lookup_tables(20)
 
     def _initialize_lookup_tables(self, max_multiple: int) -> None:
         for i in range(1, max_multiple + 1):
