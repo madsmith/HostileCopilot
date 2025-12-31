@@ -1,9 +1,9 @@
 app:
     verbose: False
-    fps: null
+    fps: 4
     confidence: null
     overlay:
-        enabled: False
+        enabled: True
         show_detections: False
         monitor: null
     debug:
@@ -17,6 +17,9 @@ app:
             digit_reader_frame:
                 enable: False
                 file_path: screenshots/last_digit_reader_frame.png
+            ping_detection:
+              enable: False
+              file_path: screenshots/last_ping_detection.png
     training:
         save: null
         save_dir: captures

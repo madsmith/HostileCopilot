@@ -240,23 +240,22 @@ class ObjectTracker:
 
 
 class ScanReader:
-    def __init__(self, reader_model: CRNN, device: torch.device):
+    def __init__(self, reader_model: CRNN, device: torch.device, app_config: ActiveScannerConfig | None = None):
         self._reader_model = reader_model
         self._transforms = get_crnn_transform()
         self._vocabulary = reader_model.config.get("vocabulary")
         self._device = device
-        self._inspect_enabled = False
-        self._inspect_path = "screenshots/last_reader.png"
-        self._inspect_limiter: RateLimiter | None = None
+
+        if app_config is not None:
+            self._inspect_enabled = app_config.inspect_digit_reader_frame
+            self._inspect_path = app_config.inspect_digit_reader_frame_path
+            self._inspect_limiter = RateLimiter(app_config.inspect_digit_reader_frame_interval) if app_config.inspect_digit_reader_frame_interval else None
+        else:
+            self._inspect_enabled = False
+            self._inspect_path = "screenshots/last_reader.png"
+            self._inspect_limiter: RateLimiter | None = None
 
         assert self._vocabulary is not None, "Reader model must have an alphabet"
-
-    def enable_inspection(self, path: Path | None = None, interval: int | None = None) -> None:
-        self._inspect_enabled = True
-        if path is not None:
-            self._inspect_path = path
-        if interval is not None:
-            self._inspect_limiter = RateLimiter(interval)
 
     def predict(self, crop: np.ndarray) -> (str, float):
         crop_rgb = crop[:, :, ::-1]
@@ -432,13 +431,23 @@ class ScanDisplay:
         if self.current_scan is None:
             return "No scan data"
 
+        def _render_prediction(prediction: PingPrediction) -> str:
+            msg = ""
+            for detection in prediction:
+                if detection.count > 1:
+                    msg += f"{detection.count}x {detection.label}"
+                else:
+                    msg += f"{detection.label}"
+            return msg
+
         msg = ""
-        for detection in self.current_scan.prediction:
-            if detection.count > 1:
-                msg += f"{detection.count}x {detection.label}"
-            else:
-                msg += f"{detection.label}"
-        
+        msg += _render_prediction(self.current_scan.prediction)
+
+        if self.current_scan.alternates:
+            print("Found alternates")
+            for i, alternate in enumerate(self.current_scan.alternates):
+                msg += f"\nAlternate {i+1}: {_render_prediction(alternate)}"
+
         return msg
 
 def class_color(class_id: int, total_classes: int = 20, opacity=1.0) -> QColor:
@@ -529,12 +538,6 @@ def crop_frame(frame: np.ndarray, bounding_box: BoundingBoxLike, fast: bool = Tr
     width  = int(round(obb.w / 2) * 2)
     height = int(round(obb.h / 2) * 2)
 
-    if DEBUG and overlay:
-        polygon = Polygon(src_corners, color=(255, 0, 0, 255))
-        overlay.set_drawables([
-            polygon,
-        ])
-
     dst_corners = np.array([
         [0,     0],
         [width, 0],
@@ -578,9 +581,8 @@ def process_ping_scans(
             logger.warning("Fail to detect on missing crop.")
             continue
         
-        if app_config.inspect_digit_reader_frame:
-            inspect_path = Path(app_config.inspect_digit_reader_frame_path)
-            cv2.imwrite(str(inspect_path), crop)
+        if app_config.inspect_ping_detection and RateLimiters.get_limiter("inspect_ping_detection").check():
+            cv2.imwrite(str(app_config.inspect_ping_detection_path), crop)
 
         previous_text = tracker.get_metadata(obj.id, "text")
         if previous_text:
@@ -590,8 +592,6 @@ def process_ping_scans(
         tracker.set_metadata(obj.id, "text", text)
 
         try:
-            # TODO: filter out fucked up sequences like "3,32"
-            # RE for valid formatted integers with , separators (3 digits)
             valid_re = r"^\d{1,3}(,\d{3})*$"
             if not re.match(valid_re, text):
                 raise ValueError(f"Invalid format: {text}")
@@ -610,15 +610,13 @@ def process_ping_scans(
         if text != previous_text:
             tracker.set_metadata(obj.id, "time_changed", time.time())
         
-        # logger.info(f"Detected text: {text}")
-        # TODO: show detected text here?
         logger.debug(f"  Processing TrackedObject [{obj.id}] {obj.label} - {obj.bounding_box}")
-    
+
 
 def save_detection(crop: np.ndarray, detection: DetectedObject, app_config: ActiveScannerConfig) -> None:
     # Ensure output directory exists
     label_norm = detection.label.replace(" ", "_").lower()
-    output_path = Path(app_config.save_dir) / label_norm
+    output_path = app_config.save_dir / label_norm
     output_path.mkdir(parents=True, exist_ok=True)
 
     # Save crop
@@ -626,15 +624,6 @@ def save_detection(crop: np.ndarray, detection: DetectedObject, app_config: Acti
     filename = f"{label_norm}_{timestamp}_{detection.id}.png"
     file_path = output_path / filename
     cv2.imwrite(str(file_path), crop)
-
-    # TODO: proper arg to enable this
-    if app_config.inspect_digit_reader_frame:
-        print("Saving inspection frame")
-        inspect_path = Path(app_config.inspect_digit_reader_frame_path).parent
-        inspect_path.mkdir(parents=True, exist_ok=True)
-        inspect_filename = inspect_path / "last_detection.png"
-        print(f"Saving to {inspect_filename}")
-        cv2.imwrite(str(inspect_filename), crop)
 
 
 def check_save_detection(crop: np.ndarray, detection: DetectedObject, tracker: ObjectTracker, app_config: ActiveScannerConfig) -> None:
@@ -666,14 +655,19 @@ def setup_logging(verbose: bool, debug: bool) -> None:
 
 def setup_inspector(app_config: ActiveScannerConfig) -> None:
     if app_config.inspect_frame:
-        output_path = Path(app_config.inspect_frame_path)
+        output_path = app_config.inspect_frame_path
         output_path.parent.mkdir(parents=True, exist_ok=True)
         RateLimiters.configure_limiter("inspect_frame", app_config.inspect_frame_interval)
 
     if app_config.inspect_digit_reader_frame:
-        output_path = Path(app_config.inspect_digit_reader_frame_path)
+        output_path = app_config.inspect_digit_reader_frame_path
         output_path.parent.mkdir(parents=True, exist_ok=True)
         RateLimiters.configure_limiter("inspect_digit_reader_frame", app_config.inspect_digit_reader_frame_interval)
+
+    if app_config.inspect_ping_detection:
+        output_path = app_config.inspect_ping_detection_path
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        RateLimiters.configure_limiter("inspect_ping_detection", app_config.inspect_ping_detection_interval)
 
 
 async def schedule_tick(tick_start: float, tick_interval: float):
@@ -695,11 +689,11 @@ def parse_args() -> tuple[argparse.Namespace, dict[str, Any]]:
     )
     parser.add_argument(
         "--fps", "-f", type=float, default=1.0,
-        help="Target processing rate in frames per second. Default: %(default)s"
+        help="Target processing rate in frames per second."
     )
     parser.add_argument(
         "--confidence", "-c", type=float, default=0.5,
-        help="Minimum confidence threshold for detections. Default: %(default)s"
+        help="Minimum confidence threshold for detections."
     )
 
     extraction_group = parser.add_argument_group("Training Extraction")
@@ -709,7 +703,7 @@ def parse_args() -> tuple[argparse.Namespace, dict[str, Any]]:
     )
     extraction_group.add_argument(
         "--save-dir", type=str, default="captures",
-        help="Directory in which to save extracted detections. Each detection will be saved to a folder with the label name in the destination folder. Default: %(default)s"
+        help="Directory in which to save extracted detections. Each detection will be saved to a folder with the label name in the destination folder."
     )
     extraction_group.add_argument(
         "--all-labels", action="store_true",
@@ -721,7 +715,7 @@ def parse_args() -> tuple[argparse.Namespace, dict[str, Any]]:
     )
     extraction_group.add_argument(
         "--capture-interval", type=float, default=3.0,
-        help="Minimum time interval between captures for the same object. Default: %(default)s"
+        help="Minimum time interval between captures for the same object."
     )
 
     advanced_group = parser.add_argument_group("Advanced")
@@ -729,11 +723,11 @@ def parse_args() -> tuple[argparse.Namespace, dict[str, Any]]:
     advanced_group.add_argument("--profiler", action="store_true", help="Enable profiler output")
     advanced_group.add_argument(
         "--detector-model", type=str, default="scanner.pt",
-        help=f"Path to object detector model. Can also be resolved under the path: {DETECTOR_MODEL_PATH}. Default: %(default)s"
+        help=f"Path to object detector model. Can also be resolved under the path: {DETECTOR_MODEL_PATH}."
     )
     advanced_group.add_argument(
         "--reader-model", type=str, default="digit_reader.pt",
-        help=f"Path to digit reader model. Can also be resolved under the path: {READER_MODEL_PATH}. Default: %(default)s"
+        help=f"Path to digit reader model. Can also be resolved under the path: {READER_MODEL_PATH}."
     )
     advanced_group.add_argument(
         "--device", "-d", type=str,
@@ -742,29 +736,42 @@ def parse_args() -> tuple[argparse.Namespace, dict[str, Any]]:
             if torch.cuda.is_available()
             else ("mps" if torch.backends.mps.is_available() else "cpu")
         ),
-        help="Device to run models on. Default: %(default)s"
+        help="Device to run models on."
     )
-    advanced_group.add_argument("--inspect", action="store_true", help="Inspect camera capture by writing frames intermittently to disk.")
+    advanced_group.add_argument(
+        "--inspect", action="store_true",
+        help="Inspect camera capture by writing frames intermittently to disk."
+    )
     advanced_group.add_argument(
         "--inspect-path", type=str, default="screenshots/last_frame.png",
-        help="File path for inspected camera frame. Default: %(default)s"
+        help="File path for inspected camera frame."
     )
     advanced_group.add_argument(
         "--inspect-interval", type=int, default=1,
-        help="Interval between saves of inspected camera frames in seconds. Default: %(default)s"
+        help="Interval between saves of inspected camera frames in seconds."
     )
     advanced_group.add_argument(
         "--inspect-reader", action="store_true", help="Inspect reader output by writing frames intermittently to disk."
     )
     advanced_group.add_argument(
         "--inspect-reader-path", type=str, default="screenshots/last_digit_reader_frame.png",
-        help="File path for inspected reader frame. Default: %(default)s"
+        help="File path for inspected reader frame."
+    )
+    advanced_group.add_argument(
+        "--inspect-ping-detection", action="store_true", help="Inspect ping detection output by writing frames intermittently to disk."
+    )
+    advanced_group.add_argument(
+        "--inspect-ping-detection-path", type=str, default="screenshots/last_ping_detection.png",
+        help="File path for inspected ping detection frame."
     )
     advanced_group.add_argument(
         "--overlay-enabled", action="store_true", default=False,
         help="Open an overlay window showing detected scans."
     )
-    advanced_group.add_argument("--overlay-detections", action="store_true", help="Overlay detections on camera feed. Implies overlay enabled.")
+    advanced_group.add_argument(
+        "--overlay-detections", action="store_true",
+        help="Overlay detections on camera feed. Implies overlay enabled."
+    )
     
     advanced_group.add_argument(
         "--overlay-monitor", type=int, default=None,
@@ -798,23 +805,18 @@ async def run_app(app_config: ActiveScannerConfig):
     device = torch.device(app_config.device)
 
     detector_model: YOLO = load_detector_model(
-        Path(app_config.detector_model),
+        app_config.detector_model,
         default_path=DETECTOR_MODEL_PATH,
         device=device
     )
 
     reader_model: CRNN = load_reader_model(
-        Path(app_config.reader_model),
+        app_config.reader_model,
         default_path=READER_MODEL_PATH,
         device=device
     )
 
-    scan_reader = ScanReader(reader_model, device)
-    if app_config.inspect_digit_reader_frame:
-        scan_reader.enable_inspection(
-            Path(app_config.inspect_digit_reader_frame_path),
-            app_config.inspect_digit_reader_frame_interval
-        )
+    scan_reader = ScanReader(reader_model, device, app_config)
 
     ping_analyzer = PingAnalyzer(config)
 
@@ -882,10 +884,10 @@ async def run_app(app_config: ActiveScannerConfig):
                 logger.debug(f"Captured frame shape: {frame.shape}")
                 frame_count += 1
 
-            if app_config.inspect and RateLimiters.get_limiter("inspect_frame").check():
+            if app_config.inspect_frame and RateLimiters.get_limiter("inspect_frame").check():
                 with Profiler("inspect"):
                     logger.debug("Saving frame...")
-                    cv2.imwrite(str(inspect_path), frame)
+                    cv2.imwrite(str(app_config.inspect_frame_path), frame)
 
             if Profiler.is_enabled() and RateLimiters.get_limiter("profile_dump").check():
                 Profiler.dump()

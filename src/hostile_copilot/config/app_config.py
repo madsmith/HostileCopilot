@@ -1,6 +1,6 @@
 import argparse
 from pathlib import Path
-from typing import Any, Generic, TypeVar
+from typing import Any, Callable, Generic, TypeVar
 
 from hostile_copilot.config import load_config, OmegaConfig
 
@@ -15,6 +15,8 @@ class Bind(Generic[T]):
         *,
         arg_key: str | None = None,
         action: str | None = None,
+        converter: Callable[[Any], Any] | None = None,
+        default: T | None = None,
     ):
         """
         config_path: Access path in the OmegaConfig
@@ -24,6 +26,8 @@ class Bind(Generic[T]):
         self.arg_key: str | None = arg_key
         self.property_name: str | None = None
         self.action: str | None = action
+        self.converter: Callable[[Any], Any] | None = converter
+        self.default: T | None = default
 
     def __set_name__(self, owner, name: str) -> None:
         self.property_name = name
@@ -90,13 +94,21 @@ class AppConfig(OmegaConfig):
                 r_value = value
             resolved = True
 
+        if bind.default:
+            if not resolved and bind.default and not r_value:
+                r_value = bind.default
+                resolved = True
+
         if self._arg_defaults:
             value = self._arg_defaults.get(bind.arg_key)
-            if not resolved and value is not None:
-                if r_value is not None and bind.action == "append" and isinstance(r_value, list):
-                    r_value.extend(value)
-                else:
-                    r_value = value
+            if not resolved and value and not r_value:
+                r_value = value
                 resolved = True
+
+        if bind.converter is not None and r_value is not None:
+            if isinstance(r_value, list):
+                r_value = [bind.converter(v) for v in r_value]
+            else:
+                r_value = bind.converter(r_value)
 
         return r_value

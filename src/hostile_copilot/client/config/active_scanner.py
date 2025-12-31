@@ -1,3 +1,4 @@
+from pathlib import Path
 from hostile_copilot.config.app_config import AppConfig, Bind
 
 
@@ -18,12 +19,12 @@ class ActiveScannerConfig(AppConfig):
 
     # Inference Models
     device = Bind[str]("app.ai.device")
-    detector_model = Bind[str]("app.ai.detector.model")
-    reader_model = Bind[str]("app.ai.reader.model")
+    detector_model = Bind[Path]("app.ai.detector.model", converter=Path)
+    reader_model = Bind[Path]("app.ai.reader.model", converter=Path)
 
     # Training Options - Extracting data for future training
     save = Bind[bool]("app.training.save")
-    save_dir = Bind[str]("app.training.save_dir")
+    save_dir = Bind[Path]("app.training.save_dir", converter=Path)
     all_labels = Bind[bool]("app.training.all_labels")
     labels = Bind[list[str]]("app.training.labels", arg_key="label", action="append")
     min_capture_interval = Bind[float]("app.training.min_capture_interval", arg_key="capture_interval")
@@ -36,8 +37,13 @@ class ActiveScannerConfig(AppConfig):
 
     # Frame Inspection Options
     inspect_frame = Bind[bool]("app.debug.inspect.frame.enable")
-    inspect_frame_path = Bind[str]("app.debug.inspect.frame.file_path")
+    inspect_frame_path = Bind[Path]("app.debug.inspect.frame.file_path", converter=Path)
     inspect_frame_interval = Bind[int]("app.debug.inspect.frame.interval")
+ 
     inspect_digit_reader_frame = Bind[bool]("app.debug.inspect.digit_reader_frame.enable")
-    inspect_digit_reader_frame_path = Bind[str]("app.debug.inspect.digit_reader_frame.file_path")
+    inspect_digit_reader_frame_path = Bind[Path]("app.debug.inspect.digit_reader_frame.file_path", converter=Path)
     inspect_digit_reader_frame_interval = Bind[int]("app.debug.inspect.digit_reader_frame.interval")
+
+    inspect_ping_detection = Bind[bool]("app.debug.inspect.ping_detection.enable")
+    inspect_ping_detection_path = Bind[Path]("app.debug.inspect.ping_detection.file_path", converter=Path, default="screenshots/last_ping_detection.png")
+    inspect_ping_detection_interval = Bind[int]("app.debug.inspect.ping_detection.interval")

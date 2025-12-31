@@ -29,6 +29,15 @@ def PAR(rs_value: int, *args) -> PingAnalysisResult:
 
     return PingAnalysisResult(rs_value=rs_value, prediction=detections)
 
+def PD(*args) -> PingPrediction:
+    detections = []
+    for count, label in batched(args, 2):
+        detections.append(PingDetection(count=count, label=label))
+    return detections
+
+def PARA(rs_value: int, predictions: PingPrediction, alternates: list[PingPrediction]) -> PingAnalysisResult:
+    return PingAnalysisResult(rs_value=rs_value, prediction=predictions, alternates=alternates)
+
 
 def analyze_case_id(param):
     """ Used to give a readable name to each test case """
@@ -129,6 +138,12 @@ def pytest_generate_tests(metafunc):
     elif dataset == "resources/unknowns" and {"rs_value","expected"} <= set(metafunc.fixturenames):
         params = build_resource_unknown(config)
         metafunc.parametrize(("rs_value", "expected"), params, ids=analyze_case_id)
+    
+    elif dataset == "resources/specific" and {"rs_value", "expected"} <= set(metafunc.fixturenames):
+        params = [
+            (8060, PAR(8060, 13, "Large Gem"))
+        ]
+        metafunc.parametrize(("rs_value", "expected"), params, ids=analyze_case_id)
 
 
 #####################################################################
@@ -168,6 +183,11 @@ class TestPingAnalyzer:
 
     @pytest.mark.dataset("resources/mixed")
     def test_analyze_mixed(self, analyzer: PingAnalyzer, rs_value: int, expected: PingAnalysis):
+        self._test_analyze(analyzer, rs_value, expected)
+
+
+    @pytest.mark.dataset("resources/specific")
+    def test_analyze_specific(self, analyzer: PingAnalyzer, rs_value: int, expected: PingAnalysis):
         self._test_analyze(analyzer, rs_value, expected)
 
 
