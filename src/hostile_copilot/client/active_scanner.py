@@ -444,9 +444,8 @@ class ScanDisplay:
         msg += _render_prediction(self.current_scan.prediction)
 
         if self.current_scan.alternates:
-            print("Found alternates")
             for i, alternate in enumerate(self.current_scan.alternates):
-                msg += f"\nAlternate {i+1}: {_render_prediction(alternate)}"
+                msg += f"\n  or {_render_prediction(alternate)}"
 
         return msg
 
