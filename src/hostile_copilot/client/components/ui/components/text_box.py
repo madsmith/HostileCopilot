@@ -29,9 +29,14 @@ class TextBox(Drawable, TextComponent):
         font = QFont(self.font_name, self.font_size)
         
         metrics = QFontMetrics(font)
-        rect = metrics.boundingRect(self.text)
+        lines = self.text.split("\n")
+        if not lines:
+            lines = [""]
+
+        width = max(metrics.horizontalAdvance(line) for line in lines)
+        height = (len(lines) - 1) * metrics.lineSpacing() + metrics.height()
         
-        return (rect.width(), rect.height())
+        return (width, height)
 
     def draw(self, painter: QPainter) -> None:
         if not self.text:
@@ -43,9 +48,11 @@ class TextBox(Drawable, TextComponent):
 
         # Measure text with current painter font
         metrics = QFontMetrics(font)
-        rect = metrics.boundingRect(self.text)
-        text_width = rect.width()
-        text_height = rect.height()
+        lines = self.text.split("\n")
+        if not lines:
+            lines = [""]
+        text_width = max(metrics.horizontalAdvance(line) for line in lines)
+        text_height = (len(lines) - 1) * metrics.lineSpacing() + metrics.height()
 
         # Default anchor is top-left
         draw_x = self.x
@@ -53,9 +60,8 @@ class TextBox(Drawable, TextComponent):
 
         if self.anchor == "center":
             draw_x = int(self.x - text_width / 2)
-            # For top-left positioning, draw at baseline; adjust so text is centered vertically
-            # QPainter.drawText expects baseline y; move baseline down by half text height
-            draw_y = int(self.y + text_height / 2)
+            top_y = self.y - (text_height / 2)
+            draw_y = int(top_y + metrics.ascent())
         elif self.anchor == "top_center":
             draw_x = int(self.x - text_width / 2)
             draw_y = self.y + metrics.ascent()  # move to baseline from top
@@ -64,4 +70,5 @@ class TextBox(Drawable, TextComponent):
 
         # Set pen color and draw
         painter.setPen(self.font_color)
-        painter.drawText(draw_x, draw_y, self.text)
+        for i, line in enumerate(lines):
+            painter.drawText(draw_x, draw_y + i * metrics.lineSpacing(), line)
