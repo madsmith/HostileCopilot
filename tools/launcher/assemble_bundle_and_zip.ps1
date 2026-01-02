@@ -44,9 +44,11 @@ New-Item -ItemType Directory -Force -Path $PayloadDir | Out-Null
 
 # Ensure get-pip.py is present for embedded python bootstrapping (venv/ensurepip are often missing)
 $GetPipPath = Join-Path $PayloadDir "get-pip.py"
-if (-not (Test-Path $GetPipPath)) {
-  Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" -OutFile $GetPipPath
+$VendoredGetPip = Join-Path $RepoRoot "tools\third-party\get-pip\get-pip.py"
+if (-not (Test-Path $VendoredGetPip)) {
+  throw "Vendored get-pip.py not found: $VendoredGetPip"
 }
+Copy-Item -Force $VendoredGetPip $GetPipPath
 
 # Build wheel
 if ($RebuildWheel) {
