@@ -42,12 +42,44 @@ def _bundle_root() -> Path:
     return Path(sys.argv[0]).resolve().parent
 
 
-def _run(cmd: Sequence[str], *, cwd: Path | None = None) -> None:
-    subprocess.run(list(cmd), check=True, cwd=str(cwd) if cwd else None)
+def _run(
+    cmd: Sequence[str],
+    *,
+    cwd: Path | None = None,
+    env: dict[str, str] | None = None,
+) -> None:
+    merged_env = os.environ.copy()
+    if env:
+        merged_env.update(env)
+    subprocess.run(list(cmd), check=True, cwd=str(cwd) if cwd else None, env=merged_env)
 
 
-def _ensure_dirs(layout: BundleLayout) -> None:
+def _print_step(text: str) -> None:
+    print(text, flush=True)
+
+
+def _cmd_succeeds_quiet(cmd: Sequence[str]) -> bool:
+    try:
+        subprocess.run(list(cmd), check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+
+def _ensure_dirs(layout: BundleLayout) -> bool:
+    if layout.app_dir.exists():
+        return False
     layout.app_dir.mkdir(parents=True, exist_ok=True)
+    return True
+
+
+def _venv_has_pip(layout: BundleLayout) -> bool:
+    return _cmd_succeeds_quiet([str(layout.venv_python_exe), "-m", "pip", "--version"])
+
+
+def _embedded_has_pip(layout: BundleLayout) -> bool:
+    _enable_embedded_site_packages(layout)
+    return _cmd_succeeds_quiet([str(layout.python_exe), "-m", "pip", "--version"])
 
 
 def _enable_embedded_site_packages(layout: BundleLayout) -> None:
@@ -91,9 +123,9 @@ def _enable_embedded_site_packages(layout: BundleLayout) -> None:
         pth_path.write_text(new_text, encoding="utf-8")
 
 
-def _create_venv(layout: BundleLayout) -> None:
+def _create_venv(layout: BundleLayout) -> bool:
     if layout.venv_python_exe.exists():
-        return
+        return False
 
     if not layout.python_exe.exists():
         raise FileNotFoundError(
@@ -105,26 +137,23 @@ def _create_venv(layout: BundleLayout) -> None:
 
     try:
         _run([str(layout.python_exe), "-m", "venv", str(layout.venv_dir)])
-        return
+        return True
     except subprocess.CalledProcessError:
         # Python embeddable distribution often does not include stdlib venv.
         pass
 
     _create_venv_via_virtualenv(layout)
+    return True
 
 
-def _ensure_embedded_pip(layout: BundleLayout) -> None:
-    _enable_embedded_site_packages(layout)
-    try:
-        _run([str(layout.python_exe), "-m", "pip", "--version"])
-        return
-    except subprocess.CalledProcessError:
-        pass
+def _ensure_embedded_pip(layout: BundleLayout) -> bool:
+    if _embedded_has_pip(layout):
+        return False
 
     # Try stdlib ensurepip first.
     try:
         _run([str(layout.python_exe), "-m", "ensurepip", "--upgrade"])
-        return
+        return True
     except subprocess.CalledProcessError:
         pass
 
@@ -139,6 +168,7 @@ def _ensure_embedded_pip(layout: BundleLayout) -> None:
 
     # After get-pip, ensure path isolation isn't preventing imports.
     _enable_embedded_site_packages(layout)
+    return True
 
 
 def _create_venv_via_virtualenv(layout: BundleLayout) -> None:
@@ -148,19 +178,45 @@ def _create_venv_via_virtualenv(layout: BundleLayout) -> None:
     _run([str(layout.python_exe), "-m", "virtualenv", str(layout.venv_dir)])
 
 
-def _ensure_pip(layout: BundleLayout) -> None:
-    try:
-        _run([str(layout.venv_python_exe), "-m", "pip", "--version"])
-        return
-    except subprocess.CalledProcessError:
-        pass
+def _ensure_pip(layout: BundleLayout) -> bool:
+    if _venv_has_pip(layout):
+        return False
 
     # Try to bootstrap pip using embedded python.
-    _ensure_embedded_pip(layout)
+    return _ensure_embedded_pip(layout)
 
 
-def _upgrade_pip(layout: BundleLayout) -> None:
+def _upgrade_pip(layout: BundleLayout) -> bool:
+    marker = layout.app_dir / ".pip_upgraded"
+    if marker.exists():
+        return False
     _run([str(layout.venv_python_exe), "-m", "pip", "install", "--upgrade", "pip"])
+    marker.write_text("ok\n", encoding="utf-8")
+    return True
+
+
+def _uv_exe(layout: BundleLayout) -> Path | None:
+    for name in ("uv.exe", "uv.cmd"):
+        p = layout.venv_scripts_dir / name
+        if p.exists():
+            return p
+    return None
+
+
+def _needs_uv(layout: BundleLayout) -> bool:
+    return _uv_exe(layout) is None
+
+
+def _ensure_uv(layout: BundleLayout) -> bool:
+    if not _needs_uv(layout):
+        return False
+
+    _run([str(layout.venv_python_exe), "-m", "pip", "install", "--upgrade", "uv"])
+    return True
+
+
+def _uv_env(layout: BundleLayout) -> dict[str, str]:
+    return {"UV_CACHE_DIR": str(layout.app_dir / "uv-cache")}
 
 
 def _find_payload_wheel(layout: BundleLayout) -> Path:
@@ -173,12 +229,81 @@ def _find_payload_wheel(layout: BundleLayout) -> Path:
     return wheels[-1]
 
 
-def _install_wheel(layout: BundleLayout) -> None:
+def _wheel_version_from_filename(wheel: Path) -> str | None:
+    name = wheel.name
+    if not name.startswith("HostileCoPilot-"):
+        return None
+    parts = name.split("-")
+    if len(parts) < 2:
+        return None
+    return parts[1]
+
+
+def _installed_hostile_copilot_version(layout: BundleLayout) -> str | None:
+    try:
+        completed = subprocess.run(
+            [str(layout.venv_python_exe), "-m", "pip", "show", "HostileCoPilot"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError:
+        return None
+
+    for line in completed.stdout.splitlines():
+        if line.lower().startswith("version:"):
+            return line.split(":", 1)[1].strip()
+    return None
+
+
+def _needs_wheel_install(layout: BundleLayout) -> bool:
+    marker = layout.app_dir / ".installed_wheel"
     wheel = _find_payload_wheel(layout)
+    if marker.exists():
+        installed = marker.read_text(encoding="utf-8").strip()
+        if installed == wheel.name:
+            return False
+    want_version = _wheel_version_from_filename(wheel)
+    if not want_version:
+        return True
+    have_version = _installed_hostile_copilot_version(layout)
+    return have_version != want_version
+
+
+def _install_wheel(layout: BundleLayout) -> bool:
+    wheel = _find_payload_wheel(layout)
+    want_version = _wheel_version_from_filename(wheel)
+    have_version = _installed_hostile_copilot_version(layout) if want_version else None
+    if want_version and have_version == want_version:
+        return False
+
+    uv = _uv_exe(layout)
+    if uv is not None:
+        _run(
+            [
+                str(uv),
+                "pip",
+                "install",
+                "--python",
+                str(layout.venv_python_exe),
+                "--upgrade",
+                str(wheel),
+            ],
+            env=_uv_env(layout),
+        )
+        (layout.app_dir / ".installed_wheel").write_text(wheel.name + "\n", encoding="utf-8")
+        return True
+
     _run([str(layout.venv_python_exe), "-m", "pip", "install", "--upgrade", str(wheel)])
+    (layout.app_dir / ".installed_wheel").write_text(wheel.name + "\n", encoding="utf-8")
+    return True
 
 
-def _run_cuda_install(layout: BundleLayout) -> None:
+def _run_cuda_install(layout: BundleLayout) -> bool:
+    marker = layout.app_dir / ".cuda_installed"
+    if marker.exists():
+        return False
+
     cuda_install = layout.payload_dir / "cuda_install.py"
     if not cuda_install.exists():
         raise FileNotFoundError(
@@ -187,6 +312,12 @@ def _run_cuda_install(layout: BundleLayout) -> None:
         )
 
     _run([str(layout.venv_python_exe), str(cuda_install)])
+    marker.write_text("ok\n", encoding="utf-8")
+    return True
+
+
+def _needs_cuda_install(layout: BundleLayout) -> bool:
+    return not (layout.app_dir / ".cuda_installed").exists()
 
 
 def _sync_tree(src: Path, dst: Path) -> None:
@@ -206,9 +337,31 @@ def _sync_tree(src: Path, dst: Path) -> None:
             shutil.copy2(Path(root) / f, target_root / f)
 
 
-def _sync_assets(layout: BundleLayout) -> None:
-    _sync_tree(layout.payload_dir / "config", layout.app_dir / "config")
-    _sync_tree(layout.payload_dir / "resources", layout.app_dir / "resources")
+def _sync_assets(layout: BundleLayout) -> bool:
+    config_dst = layout.app_dir / "config"
+    resources_dst = layout.app_dir / "resources"
+
+    needs = False
+    if (layout.payload_dir / "config").exists() and not config_dst.exists():
+        needs = True
+    if (layout.payload_dir / "resources").exists() and not resources_dst.exists():
+        needs = True
+    if not needs:
+        return False
+
+    _sync_tree(layout.payload_dir / "config", config_dst)
+    _sync_tree(layout.payload_dir / "resources", resources_dst)
+    return True
+
+
+def _needs_asset_sync(layout: BundleLayout) -> bool:
+    config_dst = layout.app_dir / "config"
+    resources_dst = layout.app_dir / "resources"
+    if (layout.payload_dir / "config").exists() and not config_dst.exists():
+        return True
+    if (layout.payload_dir / "resources").exists() and not resources_dst.exists():
+        return True
+    return False
 
 
 def _run_console_script(layout: BundleLayout, script_name: str, args: Sequence[str]) -> int:
@@ -226,14 +379,39 @@ def _run_console_script(layout: BundleLayout, script_name: str, args: Sequence[s
 def bootstrap_and_run(*, target: str, args: Sequence[str]) -> int:
     layout = BundleLayout(root=_bundle_root())
 
-    _ensure_dirs(layout)
-    _create_venv(layout)
-    _ensure_pip(layout)
-    _upgrade_pip(layout)
+    if not layout.app_dir.exists():
+        _ensure_dirs(layout)
 
-    _install_wheel(layout)
-    _run_cuda_install(layout)
-    _sync_assets(layout)
+    created_venv = False
+    if not layout.venv_python_exe.exists():
+        _print_step("[Bootstrap] Creating virtual environment")
+        created_venv = _create_venv(layout)
+
+    ensured_pip = False
+    if not _venv_has_pip(layout):
+        _print_step("[Bootstrap] Bootstrapping pip")
+        ensured_pip = _ensure_pip(layout)
+
+    # Only upgrade pip when we've just created the venv or bootstrapped pip.
+    if (created_venv or ensured_pip) and not (layout.app_dir / ".pip_upgraded").exists():
+        _print_step("[Bootstrap] Upgrading pip")
+        _upgrade_pip(layout)
+
+    if _needs_uv(layout):
+        _print_step("[Bootstrap] Installing uv")
+        _ensure_uv(layout)
+
+    if _needs_wheel_install(layout):
+        _print_step("[Bootstrap] Installing HostileCoPilot")
+        _install_wheel(layout)
+
+    if _needs_cuda_install(layout):
+        _print_step("[Bootstrap] Installing CUDA-enabled PyTorch")
+        _run_cuda_install(layout)
+
+    if _needs_asset_sync(layout):
+        _print_step("[Bootstrap] Syncing assets")
+        _sync_assets(layout)
 
     if target == "active_scanner":
         return _run_console_script(layout, "hostile-copilot-active-scanner", args)
