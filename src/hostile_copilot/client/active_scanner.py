@@ -986,7 +986,8 @@ def main() -> None:
     args, arg_defaults = parse_args()
     arg_defaults = arg_defaults | {
         # Manual defaults go here
-        "profiler_dump_interval": 10
+        "profiler_dump_interval": 10,
+        "monitor": 1
     }
     
     try:
