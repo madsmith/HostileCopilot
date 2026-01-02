@@ -104,6 +104,49 @@ pip install -e ".[dev]"
 pytest
 ```
 
+## Building Standalone Executable
+
+The standalone build is a single-folder bundle containing:
+
+- Wrapper executables (`HostileActiveScanner.exe`, `HostileCoPilot.exe`)
+- An embedded Python distribution
+- A `payload/` folder with the HostileCoPilot wheel, `cuda_install.py`, and required assets
+
+On first run, the wrapper bootstraps a venv under `./app/`, installs the wheel from `./payload/`, runs `payload/cuda_install.py` to install a suitable CUDA-enabled PyTorch build, then launches the selected entry point.
+
+### 1) Download Windows embeddable Python (3.12)
+
+- Download the **Windows embeddable package** for Python **3.12.x** from:
+  - https://www.python.org/downloads/windows/
+- Extract it to:
+  - `tools/python-embed/<python embed version>` (e.g., `python-3.12.10-embed-amd64`)
+
+That folder should contain `python.exe`.
+
+### 2) Build wrappers + assemble the bundle
+
+From the repo root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\launcher\assemble_bundle_and_zip.ps1 `
+  -EmbeddedPythonDir "tools\python-embed\python-3.12.10-embed-amd64" `
+  -RebuildWrappers `
+  -RebuildWheel
+```
+
+Outputs:
+
+- `dist-wrapper/` (wrapper executables)
+- `dist-bundle/HostileCoPilotBundle/` (final folder)
+- `dist-bundle/HostileCoPilotBundle.zip`
+
+### 3) Run
+
+Run either executable from the bundle folder:
+
+- `dist-bundle/HostileCoPilotBundle/HostileActiveScanner.exe`
+- `dist-bundle/HostileCoPilotBundle/HostileCoPilot.exe`
+
 ## Support
 
 - 📖 [Documentation](https://github.com/martin/HostileCoPilot/wiki)
