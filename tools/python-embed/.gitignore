@@ -1,0 +1,6 @@
+# Ignore everything extracted into this folder (embedded Python runtime)
+*
+
+# Keep this README and gitignore tracked
+!README.md
+!.gitignore

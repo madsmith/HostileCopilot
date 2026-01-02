@@ -65,3 +65,7 @@ tiermap.json
 regolith_bodies.json
 captures/
 capture_test/
+
+# Build files
+dist-bundle/
+dist-launcher/
