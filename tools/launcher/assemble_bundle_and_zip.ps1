@@ -1,9 +1,9 @@
 param(
   [string]$BundleName = "HostileCoPilotBundle",
   [string]$OutRoot = "dist-bundle",
-  [string]$VeneerOutDir = "dist-launcher",
+  [string]$WrapperOutDir = "dist-wrapper",
   [string]$EmbeddedPythonDir = "",
-  [switch]$RebuildVeneers,
+  [switch]$RebuildWrappers,
   [switch]$RebuildWheel
 )
 
@@ -11,8 +11,8 @@ $ErrorActionPreference = "Stop"
 
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 
-if ($RebuildVeneers) {
-  & "$PSScriptRoot\build_veneer_exes.ps1" -OutDir $VeneerOutDir
+if ($RebuildWrappers) {
+  & "$PSScriptRoot\build_wrapper_executables.ps1" -OutDir $WrapperOutDir
 }
 
 $BundleRoot = Join-Path $RepoRoot $OutRoot
@@ -24,10 +24,10 @@ if (Test-Path $BundleDir) {
 }
 New-Item -ItemType Directory -Force -Path $BundleDir | Out-Null
 
-# Copy veneer exes
-$VeneerDir = Join-Path $RepoRoot $VeneerOutDir
-Copy-Item -Force (Join-Path $VeneerDir "HostileActiveScanner.exe") (Join-Path $BundleDir "HostileActiveScanner.exe")
-Copy-Item -Force (Join-Path $VeneerDir "HostileCoPilot.exe") (Join-Path $BundleDir "HostileCoPilot.exe")
+# Copy wrapper exes
+$WrapperDir = Join-Path $RepoRoot $WrapperOutDir
+Copy-Item -Force (Join-Path $WrapperDir "HostileActiveScanner.exe") (Join-Path $BundleDir "HostileActiveScanner.exe")
+Copy-Item -Force (Join-Path $WrapperDir "HostileCoPilot.exe") (Join-Path $BundleDir "HostileCoPilot.exe")
 
 # Embedded python
 if (-not $EmbeddedPythonDir) {

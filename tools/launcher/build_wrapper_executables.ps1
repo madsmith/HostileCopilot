@@ -1,5 +1,5 @@
 param(
-  [string]$OutDir = "dist-launcher"
+  [string]$OutDir = "dist-wrapper"
 )
 
 $ErrorActionPreference = "Stop"
