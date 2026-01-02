@@ -216,7 +216,7 @@ def _ensure_uv(layout: BundleLayout) -> bool:
 
 
 def _uv_env(layout: BundleLayout) -> dict[str, str]:
-    return {"UV_CACHE_DIR": str(layout.app_dir / "uv-cache")}
+    return {"UV_CACHE_DIR": str(layout.app_dir / ".uv-cache")}
 
 
 def _find_payload_wheel(layout: BundleLayout) -> Path:
