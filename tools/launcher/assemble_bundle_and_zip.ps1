@@ -69,7 +69,10 @@ Copy-Item -Force (Join-Path $RepoRoot "cuda_install.py") (Join-Path $PayloadDir 
 
 # Copy required runtime assets
 New-Item -ItemType Directory -Force -Path (Join-Path $PayloadDir "config") | Out-Null
+Copy-Item -Force (Join-Path $RepoRoot "config\config.yaml") (Join-Path $PayloadDir "config\config.yaml")
+Copy-Item -Force (Join-Path $RepoRoot "config\config_private.sample.yaml") (Join-Path $PayloadDir "config\config_private.yaml")
 Copy-Item -Force (Join-Path $RepoRoot "config\active_scanner.yaml") (Join-Path $PayloadDir "config\active_scanner.yaml")
+
 Copy-Item -Recurse -Force (Join-Path $RepoRoot "resources") (Join-Path $PayloadDir "resources")
 
 # Create empty app dir (optional)
