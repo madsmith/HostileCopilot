@@ -87,7 +87,7 @@ def _resolve_model_path(model_path: Path, default_path: Path) -> Path:
 def load_detector_model(model_path: Path, default_path: Path, device: torch.device) -> YOLO:
     logger.debug(f"Loading detector model from {model_path}")
     model_path = _resolve_model_path(model_path, default_path)
-    return YOLO(model_path).to(device)
+    return YOLO(model_path, task="obb").to(device)
 
 
 def load_reader_model(model_path: Path, default_path: Path, device: torch.device) -> CRNN:

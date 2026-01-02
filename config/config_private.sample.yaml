@@ -4,3 +4,5 @@ private:
     api_base: "https://api.openai.com/v1"
   uexcorp:
     bearer_token: "your-uexcorp-bearer-token"
+  regolith:
+    api_key: "your-regolith-api-key"

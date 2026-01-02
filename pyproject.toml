@@ -3,7 +3,7 @@ name = "HostileCoPilot"
 version = "0.1.0"
 description = "Star Citizen Companion"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12,<3.13"
 license = {file = "LICENSE"}
 authors = [
     {name = "Martin Smith", email = "msmith@bitmonster.org"},
@@ -14,7 +14,7 @@ classifiers = [
     "Intended Audience :: End Users/Desktop",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Games/Entertainment",
 ]
 dependencies = [
@@ -30,7 +30,6 @@ dependencies = [
     "openwakeword>=0.6.0",
     "silero-vad>=5.1.2",
     "pydub>=0.25.1",
-    "audioop-lts>=0.2.2",
     "openai>=1.100.2",
     "pyautogui>=0.9.54",
     "pillow>=11.3.0",
@@ -69,7 +68,7 @@ where = ["src"]
 environments = ["sys_platform == 'win32'"]
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 
